@@ -2,9 +2,8 @@ services:
   - type: web
     name: taskhero-api
     runtime: node
-    rootDir: backend
-    buildCommand: npm --prefix .. install; npm --prefix .. run build; npm install
-    startCommand: npm start
+    buildCommand: npm install && npm run build && npm --prefix backend install
+    startCommand: npm --prefix backend start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

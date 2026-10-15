@@ -81,7 +81,7 @@ app.use(express.json());
 
 // Serve the built React frontend first, then the legacy pages during migration.
 app.use(express.static(path.join(__dirname, "..", "dist")));
-app.use(express.static(path.join(__dirname, "..")));
+app.use(express.static(path.join(__dirname, ".."), { index: false }));
 
 /* ─────────────────────────────────────────────────────────
    REQUEST LOGGER
