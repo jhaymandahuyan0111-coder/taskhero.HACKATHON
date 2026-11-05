@@ -857,12 +857,41 @@ function escHtml(str) {
     return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
 
+function safeExternalUrl(value) {
+  try {
+    const url = new URL(String(value).trim());
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 function plainIconLabel(value, fallback) {
   const label = String(value || "").trim();
   return label && !/\p{Extended_Pictographic}/u.test(label) ? escHtml(label) : fallback;
 }
 
-function saveToStorage() { localStorage.setItem(STORAGE_KEY, JSON.stringify(profileData)); }
+let profileSaveQueue = Promise.resolve();
+
+function saveToStorage() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(profileData));
+  const user = currentUser();
+  if (!user?.id) return profileSaveQueue;
+
+  const fields = JSON.parse(JSON.stringify(profileData));
+  profileSaveQueue = profileSaveQueue.then(async () => {
+    const response = await fetch(`${window.TASKHERO_API_BASE}/users/${encodeURIComponent(user.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.success) throw new Error(result.message || "Unable to sync profile.");
+  }).catch(error => {
+    showToast(`Profile saved on this device, but could not sync: ${error.message}`, "error", 5000);
+  });
+  return profileSaveQueue;
+}
 
 /* ── MODAL SYSTEM ─────────────────────────────────────── */
 function openModal(id) {
@@ -1113,6 +1142,7 @@ function addPortfolioItem() {
     const cat   = document.getElementById("port-cat").value.trim();
     const link  = document.getElementById("port-link").value.trim();
     if (!title) { showToast("Please enter a project title.", "error"); return; }
+    if (link && !safeExternalUrl(link)) { showToast("Project links must start with http:// or https://.", "error"); return; }
     profileData.portfolio.push({ icon: document.getElementById("thumbPicker").value, title, desc, cat, link });
     saveToStorage(); renderPortfolio(); closeModal("portfolioModal"); showToast("Portfolio item added!", "success");
 }
@@ -1245,7 +1275,8 @@ function renderPortfolio() {
     let html = profileData.portfolio.map((p, i) => {
         const removeBtn = IS_VIEW_MODE ? "" : `<button class="port-del" onclick="removePortfolioItem(${i})" title="Remove">✕</button>`;
         const catTag  = p.cat  ? `<span class="portfolio-cat-tag">${escHtml(p.cat)}</span>` : "";
-        const linkTag = p.link ? `<a class="portfolio-link" href="${escHtml(p.link)}" target="_blank" rel="noopener">View project</a>` : "";
+        const safeLink = safeExternalUrl(p.link);
+        const linkTag = safeLink ? `<a class="portfolio-link" href="${escHtml(safeLink)}" target="_blank" rel="noopener noreferrer">View project</a>` : "";
         return `<div class="portfolio-item"><div class="portfolio-thumb">${plainIconLabel(p.icon, "PROJECT")}</div><div class="portfolio-info"><h4>${escHtml(p.title)}</h4><p>${escHtml(p.desc)}</p>${catTag}${linkTag}</div>${removeBtn}</div>`;
     }).join("");
     if (!IS_VIEW_MODE) {
@@ -1431,8 +1462,9 @@ document.addEventListener("DOMContentLoaded", function() {
         // Viewing another user via ?userId=
         loadApiUserProfile(VIEW_USER_ID);
     } else {
-        // Own profile — use localStorage as before
-        renderAll();
+    const user = currentUser();
+    if (user) loadApiUserProfile(user.id);
+    else renderAll();
         loadConnections();
     }
 });

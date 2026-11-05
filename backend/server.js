@@ -51,6 +51,7 @@ const userRoutes         = require("./routes/users");
 const messageRoutes      = require("./routes/messages");
 const notificationRoutes = require("./routes/notifications");
 const reviewRoutes       = require("./routes/reviews");
+const aiRoutes           = require("./routes/ai");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -100,6 +101,7 @@ app.use("/api/users",         userRoutes);
 app.use("/api/messages",      messageRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/reviews",       reviewRoutes);
+app.use("/api/ai",            aiRoutes);
 
 /* ─────────────────────────────────────────────────────────
    HEALTH CHECK
@@ -140,6 +142,10 @@ app.use((err, req, res, next) => {
       success: false,
       message: "Request body contains invalid JSON.",
     });
+  }
+
+  if (err.type === "entity.too.large") {
+    return res.status(413).json({ success: false, message: "Request body is too large." });
   }
 
   if (err.message === "Origin is not allowed by CORS.") {

@@ -2,3 +2,27 @@
 window.TASKHERO_API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
   ? "http://localhost:3000/api"
   : "https://task-hero-bu79.onrender.com/api";
+
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (input, options = {}) => {
+  const requestUrl = typeof input === "string" ? input : input.url;
+  if (!requestUrl.startsWith(window.TASKHERO_API_BASE)) return nativeFetch(input, options);
+
+  const headers = new Headers(input instanceof Request ? input.headers : undefined);
+  new Headers(options.headers || {}).forEach((value, name) => headers.set(name, value));
+  const token = localStorage.getItem("taskhero-token");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  return nativeFetch(input, { ...options, headers }).then((response) => {
+    const requestPath = new URL(requestUrl, window.location.href).pathname;
+    const isAuthRequest = /\/api\/users\/(login|register)$/.test(requestPath);
+    if (response.status === 401 && !isAuthRequest) {
+      localStorage.removeItem("taskhero-token");
+      localStorage.removeItem("taskhero-user");
+      if (!window.location.pathname.endsWith("/auth.html")) {
+        const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.assign(`auth.html?returnTo=${encodeURIComponent(returnTo)}`);
+      }
+    }
+    return response;
+  });
+};

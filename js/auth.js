@@ -22,9 +22,7 @@ const authSubtitle = document.getElementById("authSubtitle");
 const submitBtn    = document.getElementById("submitBtn");
 const switchBtn    = document.getElementById("switchBtn");
 const switchLine   = document.getElementById("switchLine");
-const googleBtn    = document.getElementById("googleBtn");
 const authError    = document.getElementById("authError");
-const forgotLink   = document.getElementById("forgotLink");
 
 // Fields
 const nameField    = document.getElementById("nameField");
@@ -52,6 +50,19 @@ const params  = new URLSearchParams(window.location.search);
 let isSignup  = params.get("mode") === "signup";
 let inFlight  = false;
 
+function safeReturnTo() {
+  const requested = params.get("returnTo");
+  if (!requested) return "index.html";
+  try {
+    const destination = new URL(requested, window.location.origin);
+    if (destination.origin !== window.location.origin) return "index.html";
+    if (destination.pathname === "/" || destination.pathname.endsWith("/home.html")) return "index.html";
+    return `${destination.pathname}${destination.search}${destination.hash}`;
+  } catch {
+    return "index.html";
+  }
+}
+
 /* ── MODE SWITCHING ───────────────────────────────────────── */
 function setMode(signup) {
   isSignup = signup;
@@ -65,7 +76,6 @@ function setMode(signup) {
   // Toggle fields
   nameField.classList.toggle("hidden", !signup);
   confirmField.classList.toggle("hidden", !signup);
-  forgotLink.style.display = signup ? "none" : "block";
 
   nameInput.required    = signup;
   confirmInput.required = signup;
@@ -104,12 +114,10 @@ switchLine.addEventListener("click", (e) => {
 
 /* ── VALIDATION ───────────────────────────────────────────── */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const LOCAL_ADMIN_USERNAME = "jhayadmin1220";
 
-function isLocalAdminLogin(identifier) {
+function isLocalAdminLogin() {
   return !isSignup &&
-    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") &&
-    identifier.trim().toLowerCase() === LOCAL_ADMIN_USERNAME;
+    (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 }
 
 function showFieldError(el, msg) {
@@ -169,7 +177,7 @@ function validateForm() {
     }
   }
 
-  if (!EMAIL_RE.test(email) && !isLocalAdminLogin(email)) {
+  if (!EMAIL_RE.test(email) && !isLocalAdminLogin()) {
     showFieldError(emailError, "Enter a valid email address.");
     valid = false;
   }
@@ -220,7 +228,7 @@ nameInput.addEventListener("blur", () => {
 
 emailInput.addEventListener("blur", () => {
   const v = emailInput.value.trim();
-  if (v.length > 0 && !EMAIL_RE.test(v) && !isLocalAdminLogin(v)) {
+  if (v.length > 0 && !EMAIL_RE.test(v) && !isLocalAdminLogin()) {
     showFieldError(emailError, "Enter a valid email address.");
   } else {
     clearFieldError(emailError);
@@ -294,15 +302,16 @@ authForm.addEventListener("submit", async (e) => {
           : (result.message || "Authentication failed. Please try again.");
       throw new Error(msg);
     }
+    if (!result.token) throw new Error("The server did not create a sign-in session.");
 
     // Success — store user and redirect
     localStorage.setItem("taskhero-user", JSON.stringify(result.data));
+    localStorage.setItem("taskhero-token", result.token);
 
     setSuccess();
 
     setTimeout(() => {
-      const returnTo = params.get("returnTo");
-      window.location.href = returnTo || "home.html";
+      window.location.href = safeReturnTo();
     }, 350);
 
   } catch (err) {
@@ -320,37 +329,6 @@ authForm.addEventListener("submit", async (e) => {
   }
 });
 
-/* ── GOOGLE SIGN-IN ───────────────────────────────────────── */
-
-/**
- * State hooks called by the inline GSI handler in auth.html.
- * Keeping them here alongside the rest of the UI logic.
- */
-window.__googleAuthStart = function () {
-  inFlight = true;
-  googleBtn.disabled = true;
-  googleBtn.innerHTML = `<span class="google-g" aria-hidden="true">G</span> Connecting to Google…`;
-  hideGlobalError();
-};
-
-window.__googleAuthSuccess = function () {
-  googleBtn.textContent = "Signed in";
-  googleBtn.disabled  = true;
-};
-
-window.__googleAuthError = function (msg) {
-  inFlight = false;
-  googleBtn.disabled = false;
-  googleBtn.innerHTML = `<span class="google-g" aria-hidden="true">G</span> Continue with Google`;
-  showGlobalError(msg);
-};
-
-/* ── FORGOT PASSWORD ──────────────────────────────────────── */
-forgotLink.addEventListener("click", (e) => {
-  e.preventDefault();
-  showGlobalError("Password reset isn't available yet. Contact support if needed.");
-});
-
 /* ── INIT ─────────────────────────────────────────────────── */
 setMode(isSignup);
 
@@ -358,16 +336,14 @@ setMode(isSignup);
 (function checkAlreadyLoggedIn() {
   try {
     const stored = localStorage.getItem("taskhero-user");
-    if (stored) {
+    const token = localStorage.getItem("taskhero-token");
+    if (stored && token) {
       const user = JSON.parse(stored);
-      // Only auto-redirect if we have a valid user object (has id or token)
-      if (user && (user.id || user._id || user.token)) {
-        const returnTo = params.get("returnTo");
-        // Don't redirect if user manually navigated to auth with ?mode=signup
-        if (!params.get("mode")) {
-          window.location.href = returnTo || "home.html";
-        }
+      if (user?.id && !params.get("mode")) {
+        window.location.href = safeReturnTo();
       }
+    } else {
+      localStorage.removeItem("taskhero-user");
     }
   } catch (_) {
     // Malformed storage — ignore

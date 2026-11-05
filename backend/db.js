@@ -24,6 +24,7 @@ db.exec(`
     email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password       TEXT NOT NULL,
     avatar         TEXT NOT NULL DEFAULT '',
+    banner         TEXT DEFAULT '',
     bio            TEXT DEFAULT '',
     tagline        TEXT DEFAULT '',
     location       TEXT DEFAULT '',
@@ -110,6 +111,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notifs_userId     ON notifications(userId);
   CREATE INDEX IF NOT EXISTS idx_reviews_revieweeId ON reviews(revieweeId);
 `);
+
+if (!db.pragma('table_info(users)').some((column) => column.name === 'banner')) {
+  db.exec("ALTER TABLE users ADD COLUMN banner TEXT DEFAULT ''");
+}
 
 // Remove orphaned task records before they can reach the feed. Valid tasks
 // remain untouched; accepted tasks with a missing acceptor are reopened.

@@ -8,7 +8,17 @@
    ========================================================= */
 
 function currentUser() {
-    return JSON.parse(localStorage.getItem("taskhero-user") || "null");
+    if (!localStorage.getItem("taskhero-token")) {
+        localStorage.removeItem("taskhero-user");
+        return null;
+    }
+    try {
+        return JSON.parse(localStorage.getItem("taskhero-user") || "null");
+    } catch {
+        localStorage.removeItem("taskhero-user");
+        localStorage.removeItem("taskhero-token");
+        return null;
+    }
 }
 
 function notificationLabel(icon) {
@@ -25,13 +35,14 @@ function requireAuth(target) {
     return false;
 }
 
-function goHome()    { window.location.href = "home.html"; }
+function goHome()    { window.location.href = "index.html"; }
 function postTask()  { requireAuth("post-task.html"); }
 function myTasks()   { requireAuth("my-task.html"); }
 function messages()  { requireAuth("messeges-page.html"); }
 function goBack()    { if (window.history.length > 1) window.history.back(); else goHome(); }
 function signOut() {
     localStorage.removeItem("taskhero-user");
+    localStorage.removeItem("taskhero-token");
     window.location.href = "auth.html";
 }
 
@@ -116,57 +127,122 @@ function showToast(message, type = "info", duration = 3000) {
    NOTIFICATIONS PANEL
    ========================================================= */
 
-function notifications() {
-    const notifications = JSON.parse(localStorage.getItem("taskhero-notifications") || "[]");
-
-    // Remove existing panel
+async function notifications() {
     const existing = document.getElementById("notif-panel");
     if (existing) { existing.remove(); return; }
 
-    const panel = document.createElement("div");
+    const user = currentUser();
+    if (!user) {
+        window.location.href = "auth.html?returnTo=home.html";
+        return;
+    }
+
+    const panel = document.createElement("section");
     panel.id = "notif-panel";
+    panel.setAttribute("aria-label", "Notifications");
     panel.style.cssText = `
         position: fixed;
         top: 78px;
         right: 24px;
-        width: 320px;
-        background: ${document.body.classList.contains("dark-mode") ? "#1e1e1e" : "#fff"};
-        border: 1px solid ${document.body.classList.contains("dark-mode") ? "#333" : "#eee"};
-        border-radius: 16px;
+        width: min(360px, calc(100vw - 24px));
+        max-height: min(520px, calc(100vh - 100px));
+        background: var(--card);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 8px;
         box-shadow: 0 12px 40px rgba(0,0,0,0.15);
         z-index: 2000;
-        overflow: hidden;
+        overflow: auto;
         animation: modalIn 0.2s ease;
     `;
 
-    const items = notifications;
-    const color = document.body.classList.contains("dark-mode") ? "#f0f0f0" : "#222";
-    const subColor = document.body.classList.contains("dark-mode") ? "#aaa" : "#777";
+    const header = document.createElement("div");
+    header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border)";
+    const title = document.createElement("strong");
+    title.textContent = "Notifications";
+    const markAll = document.createElement("button");
+    markAll.type = "button";
+    markAll.className = "task-action-btn btn-view";
+    markAll.textContent = "Mark all read";
+    header.append(title, markAll);
 
-    panel.innerHTML = `
-        <div style="padding:18px 20px 14px; border-bottom:1px solid ${document.body.classList.contains("dark-mode") ? "#333" : "#eee"}">
-            <strong style="font-size:16px;color:${color}">Notifications</strong>
-        </div>
-        ${items.length ? items.map(n => `
-            <div style="display:flex;gap:12px;padding:14px 20px;border-bottom:1px solid ${document.body.classList.contains("dark-mode") ? "#2a2a2a" : "#f5f5f5"}">
-                <span style="font-size:11px;font-weight:600;color:${subColor}">${notificationLabel(n.icon)}</span>
-                <div>
-                    <div style="font-size:13px;color:${color};line-height:1.4">${n.text}</div>
-                    <div style="font-size:11px;color:${subColor};margin-top:3px">${n.time}</div>
-                </div>
-            </div>
-        `).join("") : `<div style="padding:24px 20px;text-align:center;color:${subColor};font-size:13px">No notifications yet.</div>`}
-        <div style="padding:12px 20px;text-align:center">
-            <span style="font-size:12px;color:${subColor}">You're all caught up!</span>
-        </div>
-    `;
+    const list = document.createElement("div");
+    list.setAttribute("aria-live", "polite");
+    list.style.cssText = "overflow:auto";
+    const status = document.createElement("p");
+    status.textContent = "Loading notifications…";
+    status.style.cssText = "padding:22px 16px;text-align:center;color:var(--text-sub);font-size:13px";
+    list.append(status);
+    panel.append(header, list);
+    document.body.append(panel);
 
-    document.body.appendChild(panel);
+    async function loadNotifications() {
+        list.replaceChildren();
+        const loading = document.createElement("p");
+        loading.textContent = "Loading notifications…";
+        loading.style.cssText = "padding:22px 16px;text-align:center;color:var(--text-sub);font-size:13px";
+        list.append(loading);
+        try {
+            const response = await fetch(`${window.TASKHERO_API_BASE}/notifications/${encodeURIComponent(user.id)}`);
+            const result = await response.json();
+            if (!response.ok || !result.success) throw new Error(result.message || "Unable to load notifications.");
+            list.replaceChildren();
+            if (!result.data.length) {
+                const empty = document.createElement("p");
+                empty.textContent = "No notifications yet.";
+                empty.style.cssText = "padding:24px 16px;text-align:center;color:var(--text-sub);font-size:13px";
+                list.append(empty);
+                return;
+            }
+            for (const notification of result.data) {
+                const item = document.createElement("button");
+                item.type = "button";
+                item.className = "notification-item";
+                item.style.cssText = `display:flex;width:100%;gap:12px;padding:13px 16px;text-align:left;border:0;border-bottom:1px solid var(--border);background:${notification.read ? "transparent" : "var(--surface)"};color:var(--text);cursor:pointer`;
+                const label = document.createElement("span");
+                label.textContent = notificationLabel(notification.icon);
+                label.style.cssText = "flex:0 0 64px;font-size:11px;font-weight:700;color:var(--primary)";
+                const content = document.createElement("span");
+                content.style.cssText = "min-width:0;display:grid;gap:4px";
+                const text = document.createElement("span");
+                text.textContent = notification.text;
+                text.style.cssText = "font-size:13px;line-height:1.45;overflow-wrap:anywhere";
+                const time = document.createElement("time");
+                time.dateTime = notification.createdAt;
+                time.textContent = new Date(notification.createdAt).toLocaleString();
+                time.style.cssText = "font-size:11px;color:var(--text-sub)";
+                content.append(text, time);
+                item.append(label, content);
+                if (!notification.read) {
+                    item.addEventListener("click", async () => {
+                        const readResponse = await fetch(`${window.TASKHERO_API_BASE}/notifications/${encodeURIComponent(notification.id)}/read`, { method: "PATCH" });
+                        if (readResponse.ok) loadNotifications();
+                    });
+                } else {
+                    item.disabled = true;
+                    item.style.cursor = "default";
+                }
+                list.append(item);
+            }
+        } catch (error) {
+            list.replaceChildren();
+            const message = document.createElement("p");
+            message.textContent = error.message;
+            message.style.cssText = "padding:22px 16px;text-align:center;color:var(--danger);font-size:13px";
+            list.append(message);
+        }
+    }
 
-    // Close when clicking outside
+    markAll.addEventListener("click", async () => {
+        const response = await fetch(`${window.TASKHERO_API_BASE}/notifications/${encodeURIComponent(user.id)}/read-all`, { method: "PATCH" });
+        if (response.ok) loadNotifications();
+    });
+
+    loadNotifications();
+
     setTimeout(() => {
-        document.addEventListener("click", function closePanel(e) {
-            if (!panel.contains(e.target) && e.target.id !== "notif-btn") {
+        document.addEventListener("click", function closePanel(event) {
+            if (!panel.contains(event.target) && event.target.id !== "notif-btn") {
                 panel.remove();
                 document.removeEventListener("click", closePanel);
             }

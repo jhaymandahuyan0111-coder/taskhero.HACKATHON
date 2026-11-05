@@ -7,6 +7,7 @@ const express = require("express");
 const router  = express.Router();
 const bcrypt  = require("bcryptjs");
 const db      = require("../db");
+const { createSessionToken, optionalSession, requireSession } = require("../auth");
 const localAdminEnabled = process.env.NODE_ENV !== "production" && process.env.RENDER !== "true";
 
 function isLocalOrigin(origin) {
@@ -22,6 +23,12 @@ function safeUser(user) {
   return rest;
 }
 
+function publicUser(user) {
+  if (!user) return null;
+  const { password, email, contact, ...rest } = user;
+  return rest;
+}
+
 /* ─────────────────────────────────────────────────────────
    GET /api/users
    Returns all users (no passwords).
@@ -31,7 +38,7 @@ router.get("/", (req, res) => {
   res.json({
     success: true,
     count: users.length,
-    data: users.map(safeUser),
+    data: users.map(publicUser),
   });
 });
 
@@ -69,10 +76,9 @@ router.get("/search", (req, res) => {
    POST /api/users/:id/follow and DELETE /api/users/:id/follow
    Follow or unfollow a user for the requesting account.
    ───────────────────────────────────────────────────────── */
-router.post("/:id/follow", (req, res) => {
-  const { followerId } = req.body;
+router.post("/:id/follow", requireSession, (req, res) => {
   const following = db.users.findById(req.params.id);
-  const follower = followerId ? db.users.findById(followerId) : null;
+  const follower = db.users.findById(req.user.id);
 
   if (!follower || !following) {
     return res.status(404).json({ success: false, message: "User not found." });
@@ -89,10 +95,9 @@ router.post("/:id/follow", (req, res) => {
   });
 });
 
-router.delete("/:id/follow", (req, res) => {
-  const { followerId } = req.body;
+router.delete("/:id/follow", requireSession, (req, res) => {
   const following = db.users.findById(req.params.id);
-  const follower = followerId ? db.users.findById(followerId) : null;
+  const follower = db.users.findById(req.user.id);
 
   if (!follower || !following) {
     return res.status(404).json({ success: false, message: "User not found." });
@@ -184,7 +189,7 @@ router.get("/:id/friends", (req, res) => {
    Returns a single user by id.
    Includes their posted tasks and accepted tasks.
    ───────────────────────────────────────────────────────── */
-router.get("/:id", (req, res) => {
+router.get("/:id", optionalSession, (req, res) => {
   const user = db.users.findById(req.params.id);
 
   if (!user) {
@@ -197,7 +202,7 @@ router.get("/:id", (req, res) => {
   res.json({
     success: true,
     data: {
-      ...safeUser(user),
+      ...(req.user?.id === user.id ? safeUser(user) : publicUser(user)),
       followerCount: db.users.followerCount(user.id),
       followingCount: db.users.followingCount(user.id),
       postedTasks,
@@ -259,67 +264,7 @@ router.post("/register", (req, res) => {
 
   const created = db.users.create(user);
 
-  res.status(201).json({ success: true, data: safeUser(created) });
-});
-
-/* ─────────────────────────────────────────────────────────
-   POST /api/users/google
-   Sign in or register via Google Identity Services.
-
-   Body: { name, email, googleId, avatar }
-     - name     : display name from Google profile
-     - email    : verified Google email
-     - googleId : Google "sub" claim (unique per user per app)
-     - avatar   : profile picture URL (optional)
-
-   Behaviour:
-     - Existing email → return that user (no password check)
-     - New email      → create account with a locked password
-   ───────────────────────────────────────────────────────── */
-router.post("/google", (req, res) => {
-  const { name, email, googleId, avatar } = req.body;
-
-  if (!email || !googleId) {
-    return res.status(400).json({
-      success: false,
-      message: "email and googleId are required.",
-    });
-  }
-
-  // Return existing account for this email
-  const existing = db.users.findByEmail(email);
-  if (existing) {
-    // Optionally keep avatar in sync with Google photo
-    if (avatar && avatar !== existing.avatar) {
-      db.users.update(existing.id, { avatar });
-    }
-    return res.json({ success: true, data: safeUser(db.users.findById(existing.id)) });
-  }
-
-  // Create new account — password is a long random hash (can never be used for login)
-  const displayName = (name || email.split("@")[0]).trim();
-  const user = {
-    id:             db.newId("user-"),
-    name:           displayName,
-    email:          email.toLowerCase().trim(),
-    password:       bcrypt.hashSync(googleId + (process.env.GOOGLE_PW_SALT || "taskhero-google"), 10),
-    avatar:         avatar || displayName.charAt(0).toUpperCase(),
-    bio:            "",
-    tagline:        "",
-    location:       "",
-    skills:         [],
-    expertise:      [],
-    certs:          [],
-    portfolio:      [],
-    workExp:        [],
-    contact:        { email: email.toLowerCase().trim() },
-    rating:         0,
-    tasksCompleted: 0,
-    joinedAt:       new Date().toISOString(),
-  };
-
-  const created = db.users.create(user);
-  return res.status(201).json({ success: true, data: safeUser(created) });
+  res.status(201).json({ success: true, data: safeUser(created), token: createSessionToken(created.id) });
 });
 
 /* ─────────────────────────────────────────────────────────
@@ -362,6 +307,7 @@ router.post("/login", (req, res) => {
     success: true,
     message: "Login successful.",
     data: safeUser(user),
+    token: createSessionToken(user.id),
   });
 });
 
@@ -373,7 +319,10 @@ router.post("/login", (req, res) => {
            skills?, expertise?, certs?, portfolio?,
            workExp?, contact?, banner? }
    ───────────────────────────────────────────────────────── */
-router.patch("/:id", (req, res) => {
+router.patch("/:id", requireSession, (req, res) => {
+  if (req.params.id !== req.user.id) {
+    return res.status(403).json({ success: false, message: "You can only update your own profile." });
+  }
   const user = db.users.findById(req.params.id);
 
   if (!user) {

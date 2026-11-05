@@ -342,7 +342,6 @@ body.dark-mode .no-results h3 { color: var(--text); }
                 const response = await fetch(`${window.TASKHERO_API_BASE}/tasks`);
                 const result = await response.json();
                 if (!response.ok || !result.success) throw new Error(result.message || "Unable to load tasks.");
-                const user = currentUser();
                 // Backend now filters orphan tasks and attaches poster; extra null-guard here for safety
                 allTasks = result.data.filter(t =>
                     t.status === "open" &&
@@ -358,6 +357,7 @@ body.dark-mode .no-results h3 { color: var(--text); }
         function renderTasks() {
             const grid = document.getElementById("taskGrid");
             const search = document.getElementById("searchInput").value.toLowerCase();
+            const user = currentUser();
             let filtered = allTasks.filter(task => {
                 const mf = currentFilter === "all" || task.category === currentFilter;
                 const ms = !search || task.title.toLowerCase().includes(search) || task.category.toLowerCase().includes(search) || task.location.toLowerCase().includes(search) || task.description.toLowerCase().includes(search);

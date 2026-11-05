@@ -6,6 +6,9 @@
 const express = require("express");
 const router  = express.Router();
 const db      = require("../db");
+const { requireSession } = require("../auth");
+
+router.use(requireSession);
 
 /* ─────────────────────────────────────────────────────────
    GET /api/messages/conversations/:userId
@@ -14,6 +17,9 @@ const db      = require("../db");
    ───────────────────────────────────────────────────────── */
 router.get("/conversations/:userId", (req, res) => {
   const { userId } = req.params;
+  if (userId !== req.user.id) {
+    return res.status(403).json({ success: false, message: "You can only view your own conversations." });
+  }
 
   const userConvos = db.conversations.findByUser(userId);
 
@@ -62,6 +68,9 @@ router.get("/conversations/:userId", (req, res) => {
    ───────────────────────────────────────────────────────── */
 router.get("/conversations/:userId/:conversationId", (req, res) => {
   const { userId, conversationId } = req.params;
+  if (userId !== req.user.id) {
+    return res.status(403).json({ success: false, message: "You can only view your own conversations." });
+  }
 
   const conv = db.conversations.findById(conversationId);
 
@@ -107,7 +116,8 @@ router.get("/conversations/:userId/:conversationId", (req, res) => {
    Body: { conversationId, senderId, text }
    ───────────────────────────────────────────────────────── */
 router.post("/", (req, res) => {
-  const { conversationId, senderId, text } = req.body;
+  const { conversationId, text } = req.body;
+  const senderId = req.user.id;
 
   // Validation
   if (!conversationId || !senderId || !text || !text.trim()) {
@@ -181,7 +191,7 @@ router.post("/", (req, res) => {
    ───────────────────────────────────────────────────────── */
 router.delete("/:messageId", (req, res) => {
   const { messageId } = req.params;
-  const { userId } = req.body;
+  const userId = req.user.id;
   const message = db.messages.findById(messageId);
 
   if (!message) {
@@ -207,7 +217,8 @@ router.delete("/:messageId", (req, res) => {
    Body: { taskId?, initiatorId, recipientId }
    ───────────────────────────────────────────────────────── */
 router.post("/conversations", (req, res) => {
-  const { taskId, initiatorId, recipientId } = req.body;
+  const { taskId, recipientId } = req.body;
+  const initiatorId = req.user.id;
 
   if (!initiatorId || !recipientId) {
     return res.status(400).json({

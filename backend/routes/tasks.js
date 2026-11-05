@@ -6,6 +6,7 @@
 const express = require("express");
 const router  = express.Router();
 const db      = require("../db");
+const { requireSession } = require("../auth");
 
 /* ─────────────────────────────────────────────────────────
    VALID CATEGORIES
@@ -94,9 +95,9 @@ router.get("/:id", (req, res) => {
 
    Body: { title, category, budget, location, deadline?, description, postedBy }
    ───────────────────────────────────────────────────────── */
-router.post("/", (req, res) => {
-  const { title, category, budget, location, deadline, description, postedBy } =
-    req.body;
+router.post("/", requireSession, (req, res) => {
+  const { title, category, budget, location, deadline, description } = req.body;
+  const postedBy = req.user.id;
 
   // ── Validation ──────────────────────────────────────────
   const errors = [];
@@ -115,9 +116,6 @@ router.post("/", (req, res) => {
 
   if (!description || description.trim().length < 10)
     errors.push("Description must be at least 10 characters.");
-
-  if (!postedBy)
-    errors.push("postedBy (user id) is required.");
 
   if (errors.length > 0) {
     return res.status(400).json({ success: false, errors });
@@ -167,7 +165,7 @@ router.post("/", (req, res) => {
 
    Body: { acceptedBy }
    ───────────────────────────────────────────────────────── */
-router.patch("/:id/accept", (req, res) => {
+router.patch("/:id/accept", requireSession, (req, res) => {
   const task = db.tasks.findById(req.params.id);
 
   if (!task) {
@@ -181,10 +179,7 @@ router.patch("/:id/accept", (req, res) => {
     });
   }
 
-  const { acceptedBy } = req.body;
-  if (!acceptedBy) {
-    return res.status(400).json({ success: false, message: "acceptedBy is required." });
-  }
+  const acceptedBy = req.user.id;
 
   const acceptor = db.users.findById(acceptedBy);
   if (!acceptor) {
@@ -240,7 +235,7 @@ router.patch("/:id/accept", (req, res) => {
 
    Body: { userId } - must be the poster or acceptor
    ───────────────────────────────────────────────────────── */
-router.patch("/:id/complete", (req, res) => {
+router.patch("/:id/complete", requireSession, (req, res) => {
   const task = db.tasks.findById(req.params.id);
 
   if (!task) {
@@ -254,7 +249,7 @@ router.patch("/:id/complete", (req, res) => {
     });
   }
 
-  const { userId } = req.body;
+  const userId = req.user.id;
   if (task.acceptedBy !== userId && task.postedBy !== userId) {
     return res.status(403).json({
       success: false,
@@ -292,14 +287,14 @@ router.patch("/:id/complete", (req, res) => {
 
    Body: { userId }
    ───────────────────────────────────────────────────────── */
-router.delete("/:id", (req, res) => {
+router.delete("/:id", requireSession, (req, res) => {
   const task = db.tasks.findById(req.params.id);
 
   if (!task) {
     return res.status(404).json({ success: false, message: "Task not found." });
   }
 
-  const { userId } = req.body;
+  const userId = req.user.id;
 
   if (task.postedBy !== userId) {
     return res.status(403).json({

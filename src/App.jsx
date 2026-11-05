@@ -1,11 +1,22 @@
 import { useEffect, useState } from "react";
+import AiChatBot from "./Ai chat bot/AiChatBot.jsx";
 
 const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
   ? "http://localhost:3000/api"
   : "https://task-hero-bu79.onrender.com/api";
 
 function currentUser() {
-  return JSON.parse(localStorage.getItem("taskhero-user") || "null");
+  if (!localStorage.getItem("taskhero-token")) {
+    localStorage.removeItem("taskhero-user");
+    return null;
+  }
+  try {
+    return JSON.parse(localStorage.getItem("taskhero-user") || "null");
+  } catch {
+    localStorage.removeItem("taskhero-user");
+    localStorage.removeItem("taskhero-token");
+    return null;
+  }
 }
 
 function go(path) {
@@ -13,6 +24,15 @@ function go(path) {
 }
 
 function Navigation() {
+  const [isDark, setIsDark] = useState(() => document.body.classList.contains("dark-mode"));
+
+  function toggleTheme() {
+    const nextIsDark = !document.body.classList.contains("dark-mode");
+    document.body.classList.toggle("dark-mode", nextIsDark);
+    localStorage.setItem("taskhero-dark-mode", String(nextIsDark));
+    setIsDark(nextIsDark);
+  }
+
   return (
     <header className="app-header">
       <nav className="navbar" aria-label="Main navigation">
@@ -26,6 +46,14 @@ function Navigation() {
         </div>
         <div className="nav-actions">
           <a className="primary-button post-task-button" href="post-task.html">Post a task</a>
+          <button className="theme-toggle-button" type="button" onClick={toggleTheme} aria-label={`Switch to ${isDark ? "light" : "dark"} mode`} title={`Switch to ${isDark ? "light" : "dark"} mode`}>
+            {isDark ? (
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42" /></svg>
+            ) : (
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z" /></svg>
+            )}
+            <span>{isDark ? "Light" : "Dark"}</span>
+          </button>
           <a className="account-link" href="auth.html">Sign in</a>
         </div>
       </nav>
@@ -87,6 +115,7 @@ function Home() {
   return (
     <>
       <Navigation />
+      <AiChatBot />
       <section className="page-container">
         <div className="page-header">
           <div>

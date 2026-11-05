@@ -6,6 +6,9 @@
 const express = require("express");
 const router  = express.Router();
 const db      = require("../db");
+const { requireSession } = require("../auth");
+
+router.use(requireSession);
 
 /* ─────────────────────────────────────────────────────────
    GET /api/notifications/:userId
@@ -13,6 +16,9 @@ const db      = require("../db");
    ───────────────────────────────────────────────────────── */
 router.get("/:userId", (req, res) => {
   const { userId } = req.params;
+  if (userId !== req.user.id) {
+    return res.status(403).json({ success: false, message: "You can only view your own notifications." });
+  }
 
   const userNotifs = db.notifications.findByUser(userId);
 
@@ -34,6 +40,9 @@ router.get("/:userId", (req, res) => {
    Marks all notifications as read for a user.
    ───────────────────────────────────────────────────────── */
 router.patch("/:userId/read-all", (req, res) => {
+  if (req.params.userId !== req.user.id) {
+    return res.status(403).json({ success: false, message: "You can only update your own notifications." });
+  }
   db.notifications.markAllRead(req.params.userId);
   res.json({ success: true, message: "All notifications marked as read." });
 });
@@ -43,6 +52,13 @@ router.patch("/:userId/read-all", (req, res) => {
    Marks a single notification as read.
    ───────────────────────────────────────────────────────── */
 router.patch("/:id/read", (req, res) => {
+  const existing = db.notifications.findById(req.params.id);
+  if (!existing) {
+    return res.status(404).json({ success: false, message: "Notification not found." });
+  }
+  if (existing.userId !== req.user.id) {
+    return res.status(403).json({ success: false, message: "You can only update your own notifications." });
+  }
   const notif = db.notifications.markOneRead(req.params.id);
 
   if (!notif) {

@@ -155,17 +155,6 @@
     }
     .field-error.visible { display: block; }
 
-    .forgot-link {
-      font-size: 12px;
-      color: var(--primary);
-      text-decoration: none;
-      font-weight: 500;
-      display: block;
-      text-align: right;
-      margin-top: 4px;
-    }
-    .forgot-link:hover { text-decoration: underline; }
-
     .auth-error {
       min-height: 20px;
       font-size: 13px;
@@ -195,57 +184,6 @@
     }
     .submit-btn:hover:not(:disabled) { background: var(--primary-hov); }
     .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-
-    /* Divider */
-    .auth-divider {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 14px;
-      color: var(--text-sub);
-      font-size: 12px;
-    }
-    .auth-divider::before,
-    .auth-divider::after {
-      content: "";
-      flex: 1;
-      height: 1px;
-      background: var(--border);
-    }
-
-    /* Google */
-    .google-btn {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      padding: 0 16px;
-      height: 42px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 500;
-      color: var(--text);
-      cursor: pointer;
-      margin-bottom: 20px;
-      transition: border-color 0.15s, background 0.15s;
-    }
-    .google-btn:hover {
-      border-color: var(--primary);
-      background: var(--surface);
-    }
-    .google-g {
-      width: 20px; height: 20px;
-      display: flex; align-items: center; justify-content: center;
-      background: var(--primary);
-      color: white;
-      border-radius: 50%;
-      font-size: 11px;
-      font-weight: 800;
-    }
 
     /* Switch */
     .auth-switch {
@@ -289,16 +227,7 @@
       color: var(--text);
     }
     body.dark-mode .field-wrap input::placeholder { color: #555568; }
-    body.dark-mode .google-btn {
-      background: var(--surface);
-      border-color: var(--border);
-      color: var(--text);
-    }
-    body.dark-mode .google-btn:hover { border-color: var(--primary); }
     body.dark-mode .auth-switch { color: var(--text-sub); }
-    body.dark-mode .auth-divider { color: var(--text-sub); }
-    body.dark-mode .auth-divider::before,
-    body.dark-mode .auth-divider::after { background: var(--border); }
 
     @media (max-width: 480px) {
       .auth-card { padding: 28px 20px; }
@@ -348,7 +277,6 @@
             <button type="button" class="pw-toggle" id="pwToggle1" aria-label="Show password">Show</button>
           </div>
           <span class="field-error" id="passwordError" role="alert" aria-live="polite"></span>
-          <a href="#" class="forgot-link" id="forgotLink">Forgot password?</a>
         </div>
 
         <!-- Confirm Password (signup only) -->
@@ -369,15 +297,6 @@
 
       </form>
 
-      <!-- Divider -->
-      <div class="auth-divider">or continue with</div>
-
-      <!-- Google -->
-      <button type="button" class="google-btn" id="googleBtn" aria-label="Continue with Google">
-        <span class="google-g" aria-hidden="true">G</span>
-        Continue with Google
-      </button>
-
       <!-- Switch mode -->
       <p class="auth-switch" id="switchLine">
         Don't have an account?
@@ -388,98 +307,6 @@
   </div>
 
   <script src="js/config.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script>
-    /**
-     * ── GOOGLE SIGN-IN SETUP ─────────────────────────────────
-     * Replace GOOGLE_CLIENT_ID below with your OAuth 2.0 client
-     * ID from https://console.cloud.google.com/
-     * (APIs & Services → Credentials → Web application)
-     *
-    * Add the exact frontend origins in Google Cloud Console:
-    *   http://localhost:5173
-    *   http://127.0.0.1:5173
-    *   http://localhost:3000       (if served by the backend)
-    *   http://127.0.0.1:3000       (if served by the backend)
-    *   https://jhaymandahuyan0111-coder.github.io
-     */
-    window.GOOGLE_CLIENT_ID = "890510971599-84sqo28pemd5mttle6f6cjntau2kasdj.apps.googleusercontent.com";
-
-    /**
-     * Called by the GSI library when the user picks a Google
-     * account. The credential field is a signed JWT from Google.
-     * We decode it client-side to get name/email/sub/picture,
-     * then let the backend upsert the user.
-     */
-    window.handleCredentialResponse = async function (response) {
-      const googleJwt = response.credential;
-
-      // Decode JWT payload (base64url, middle section)
-      let payload;
-      try {
-        const base64 = googleJwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
-        payload = JSON.parse(atob(base64));
-      } catch {
-        window.__googleAuthError("Failed to read Google credentials. Please try again.");
-        return;
-      }
-
-      const { sub: googleId, email, name, picture: avatar } = payload;
-
-      if (!email || !googleId) {
-        window.__googleAuthError("Google did not return a valid email. Please try again.");
-        return;
-      }
-
-      window.__googleAuthStart();
-
-      try {
-        const res    = await fetch(`${window.TASKHERO_API_BASE}/users/google`, {
-          method:  "POST",
-          headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ name, email, googleId, avatar }),
-        });
-        const result = await res.json();
-
-        if (!res.ok || !result.success) {
-          throw new Error(result.message || "Google sign-in failed.");
-        }
-
-        // Mirror the email/password success flow
-        localStorage.setItem("taskhero-user", JSON.stringify(result.data));
-        window.__googleAuthSuccess();
-
-        setTimeout(() => {
-          const p = new URLSearchParams(window.location.search);
-          window.location.href = p.get("returnTo") || "home.html";
-        }, 350);
-
-      } catch (err) {
-        const isOffline =
-          err instanceof TypeError && err.message.toLowerCase().includes("fetch");
-        window.__googleAuthError(
-          isOffline
-            ? "The TaskHero server is offline. Make sure the backend is running."
-            : err.message
-        );
-      }
-    };
-
-    // Initialise GSI once the library has loaded
-    window.addEventListener("load", function () {
-      if (!window.google || !window.google.accounts) return;
-      google.accounts.id.initialize({
-        client_id:              window.GOOGLE_CLIENT_ID,
-        callback:               window.handleCredentialResponse,
-        auto_select:            false,
-        cancel_on_tap_outside:  true,
-      });
-      google.accounts.id.renderButton(
-        document.getElementById("googleBtn"),
-        { theme: "outline", size: "large", width: 368, text: "continue_with" }
-      );
-    });
-  </script>
   <script src="js/auth.js"></script>
 </body>
 </html>

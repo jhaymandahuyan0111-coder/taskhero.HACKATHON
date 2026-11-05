@@ -6,6 +6,7 @@
 const express = require("express");
 const router  = express.Router();
 const db      = require("../db");
+const { requireSession } = require("../auth");
 
 /* ─────────────────────────────────────────────────────────
    POST /api/reviews
@@ -13,8 +14,9 @@ const db      = require("../db");
 
    Body: { taskId, reviewerId, revieweeId, stars, text }
    ───────────────────────────────────────────────────────── */
-router.post("/", (req, res) => {
-  const { taskId, reviewerId, revieweeId, stars, text } = req.body;
+router.post("/", requireSession, (req, res) => {
+  const { taskId, revieweeId, stars, text } = req.body;
+  const reviewerId = req.user.id;
 
   // ── Basic validation ────────────────────────────────────
   const errors = [];
