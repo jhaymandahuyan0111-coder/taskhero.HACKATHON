@@ -52,6 +52,7 @@ const messageRoutes      = require("./routes/messages");
 const notificationRoutes = require("./routes/notifications");
 const reviewRoutes       = require("./routes/reviews");
 const aiRoutes           = require("./routes/ai");
+const paymentRoutes      = require("./routes/payments");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -76,6 +77,9 @@ app.use(cors({
   methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 }));
+
+// Preserve the signed Velo payload before the global JSON parser consumes it.
+app.use("/api/payments/webhook", express.raw({ type: "application/json", limit: "1mb" }));
 
 // Parse JSON request bodies
 app.use(express.json());
@@ -102,6 +106,7 @@ app.use("/api/messages",      messageRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/reviews",       reviewRoutes);
 app.use("/api/ai",            aiRoutes);
+app.use("/api/payments",      paymentRoutes);
 
 /* ─────────────────────────────────────────────────────────
    HEALTH CHECK

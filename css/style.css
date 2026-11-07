@@ -1010,6 +1010,10 @@ body.dark-mode .npm-signout:hover svg { color: #f87171; }
     font-size: 14px;
     font-weight: 600;
     text-decoration: none;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    cursor: pointer;
     transition: color 140ms ease, background 140ms ease;
 }
 
@@ -1172,7 +1176,7 @@ body.dark-mode .npm-signout:hover svg { color: #f87171; }
 }
 
 .filter-btn:hover { border-color: var(--primary); color: var(--primary); }
-.filter-btn.active { border-color: var(--text); background: var(--text); color: white; }
+.filter-btn.active { border-color: var(--text); background: var(--text); color: var(--card); }
 
 .results-heading {
     display: flex;
@@ -1263,6 +1267,100 @@ body.dark-mode .npm-signout:hover svg { color: #f87171; }
 .secondary-button { background: var(--card); color: var(--primary); }
 .secondary-button:hover { color: #fff; }
 .loading-indicator { display: block; width: 24px; height: 24px; margin: 0 auto 14px; border: 2px solid var(--border); border-top-color: var(--primary); border-radius: 50%; animation: loadingSpin 700ms linear infinite; }
+
+.agent-payments {
+    margin-top: 54px;
+    padding-top: 28px;
+    border-top: 1px solid var(--border);
+    scroll-margin-top: 84px;
+}
+
+.agent-payments-heading,
+.agent-panel-heading,
+.agent-wallet-balance,
+.agent-approval-row,
+.agent-receipt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.agent-payments-heading { margin-bottom: 20px; }
+.agent-eyebrow { color: var(--primary); font-size: 11px; font-weight: 800; }
+.agent-payments-heading h2 { margin-top: 6px; color: var(--text); font-size: 23px; }
+.agent-payments-heading p { max-width: 620px; margin-top: 6px; color: var(--text-sub); font-size: 14px; line-height: 1.5; }
+
+.velo-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    flex: 0 0 auto;
+    color: var(--text-sub);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.velo-status > span { width: 8px; height: 8px; border-radius: 50%; background: #d97706; }
+.velo-status.is-ready > span { background: #16a34a; }
+.agent-payments-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+.agent-payment-panel {
+    min-width: 0;
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+}
+
+.agent-checkout-panel { grid-column: 1 / -1; }
+
+.agent-panel-heading { justify-content: flex-start; align-items: flex-start; margin-bottom: 16px; }
+.agent-step { color: var(--primary); font-size: 12px; font-weight: 800; }
+.agent-panel-heading h3 { color: var(--text); font-size: 15px; }
+.agent-panel-heading p { margin-top: 4px; color: var(--text-sub); font-size: 12px; line-height: 1.45; }
+.agent-wallet-button { width: 100%; }
+
+.agent-wallet-balance {
+    margin: 12px 0;
+    padding: 10px 0;
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-sub);
+    font-size: 12px;
+}
+
+.agent-wallet-balance span { display: flex; flex-direction: column; gap: 3px; }
+.agent-wallet-balance strong { color: var(--text); font-size: 14px; }
+.agent-form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.agent-payment-form { display: grid; gap: 10px; }
+
+.agent-field { display: grid; min-width: 0; gap: 6px; color: var(--text-sub); font-size: 12px; font-weight: 700; }
+.agent-field input { min-width: 0; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; }
+.agent-field input:focus { outline: 2px solid rgba(40,112,82,0.2); border-color: var(--primary); }
+.agent-approval-row { margin-top: 12px; padding: 10px; border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 700; }
+.agent-approval-row .primary-button { padding: 8px 12px; font-size: 12px; }
+.agent-claim-button { width: 100%; margin-top: 10px; padding: 9px 12px; border: 1px solid var(--primary); border-radius: 6px; background: transparent; color: var(--primary); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.agent-disclaimer,.agent-help { margin-top: 12px; color: var(--text-sub); font-size: 12px; line-height: 1.5; }
+.agent-feedback { margin-top: 12px; color: var(--primary); font-size: 13px; line-height: 1.5; }
+.agent-feedback.is-error { color: #b42318; }
+.agent-receipt { justify-content: flex-start; margin-top: 10px; color: var(--text-sub); font-size: 12px; }
+.agent-receipt a,.agent-receipt button { color: var(--primary); font: inherit; font-weight: 700; }
+.agent-receipt button { border: 0; background: transparent; cursor: pointer; }
+.agent-wallet-button:disabled,.agent-claim-button:disabled,.agent-approval-row button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+body.dark-mode .agent-field input { background: var(--surface); }
+body.dark-mode .agent-feedback.is-error { color: #f87171; }
+
+@media (max-width: 680px) {
+    .agent-payments { scroll-margin-top: 124px; }
+    .agent-disclaimer { padding-bottom: 64px; }
+    .agent-payments-heading { align-items: flex-start; flex-direction: column; }
+    .agent-payments-grid { grid-template-columns: 1fr; }
+    .agent-form-row { grid-template-columns: 1fr; }
+    .agent-approval-row { align-items: flex-start; flex-direction: column; }
+    .help-chat.is-obscured { visibility: hidden; pointer-events: none; }
+}
 
 @keyframes loadingSpin { to { transform: rotate(360deg); } }
 

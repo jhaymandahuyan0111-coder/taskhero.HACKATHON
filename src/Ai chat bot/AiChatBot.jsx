@@ -4,7 +4,7 @@ const suggestions = ["How do I post a task?", "How do I message a helper?", "How
 const MAX_HISTORY_MESSAGES = 4;
 const API_BASE = window.TASKHERO_API_BASE || "/api";
 
-export default function AiChatBot() {
+export default function AiChatBot({ isHidden = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -114,7 +114,7 @@ export default function AiChatBot() {
   }
 
   return (
-    <aside className="help-chat" aria-label="Anny, TaskHero personal assistant">
+    <aside className={`help-chat ${isHidden ? "is-obscured" : ""}`} aria-label="Anny, TaskHero personal assistant">
       {isOpen && (
         <section className="help-chat-panel" id="help-chat-panel" aria-label="Chat with Anny" aria-labelledby="help-chat-title">
           <header className="help-chat-header">

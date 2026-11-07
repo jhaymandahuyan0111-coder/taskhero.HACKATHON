@@ -105,6 +105,27 @@ db.exec(`
     createdAt  TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS velo_payment_intents (
+    operationId     TEXT PRIMARY KEY,
+    userId          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    requestHash     TEXT NOT NULL,
+    paymentIntentId TEXT NOT NULL UNIQUE,
+    checkoutUrl     TEXT NOT NULL,
+    amount          TEXT NOT NULL,
+    asset           TEXT NOT NULL,
+    description     TEXT NOT NULL,
+    status          TEXT NOT NULL,
+    createdAt       TEXT NOT NULL,
+    updatedAt       TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS velo_webhook_deliveries (
+    deliveryId     TEXT PRIMARY KEY,
+    eventType      TEXT NOT NULL,
+    paymentIntentId TEXT,
+    receivedAt     TEXT NOT NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_tasks_postedBy    ON tasks(postedBy);
   CREATE INDEX IF NOT EXISTS idx_tasks_status      ON tasks(status);
   CREATE INDEX IF NOT EXISTS idx_messages_convId   ON messages(conversationId);
@@ -307,6 +328,56 @@ const ALLOWED_TASK_FIELDS = [
   'title', 'category', 'budget', 'location', 'deadline',
   'description', 'status', 'acceptedBy', 'updatedAt',
 ];
+
+const veloPaymentStmts = {
+  findByOperationId: db.prepare('SELECT * FROM velo_payment_intents WHERE operationId = ?'),
+  findByIntentId: db.prepare('SELECT * FROM velo_payment_intents WHERE paymentIntentId = ?'),
+  insert: db.prepare(`
+    INSERT INTO velo_payment_intents
+      (operationId, userId, requestHash, paymentIntentId, checkoutUrl, amount, asset, description, status, createdAt, updatedAt)
+    VALUES
+      (@operationId, @userId, @requestHash, @paymentIntentId, @checkoutUrl, @amount, @asset, @description, @status, @createdAt, @updatedAt)
+  `),
+  updateStatusByIntent: db.prepare(`
+    UPDATE velo_payment_intents SET status = @status, updatedAt = @updatedAt
+    WHERE paymentIntentId = @paymentIntentId
+  `),
+  insertWebhookDelivery: db.prepare(`
+    INSERT OR IGNORE INTO velo_webhook_deliveries (deliveryId, eventType, paymentIntentId, receivedAt)
+    VALUES (@deliveryId, @eventType, @paymentIntentId, @receivedAt)
+  `),
+  latestWebhookStatusByIntent: db.prepare(`
+    SELECT eventType, receivedAt FROM velo_webhook_deliveries
+    WHERE paymentIntentId = ? AND eventType IN ('payment.succeeded', 'payment.failed')
+    ORDER BY receivedAt DESC LIMIT 1
+  `),
+};
+
+const createVeloCheckout = db.transaction((checkout) => {
+  veloPaymentStmts.insert.run(checkout);
+  const event = veloPaymentStmts.latestWebhookStatusByIntent.get(checkout.paymentIntentId);
+  if (event) {
+    veloPaymentStmts.updateStatusByIntent.run({
+      paymentIntentId: checkout.paymentIntentId,
+      status: event.eventType === "payment.succeeded" ? "succeeded" : "failed",
+      updatedAt: event.receivedAt,
+    });
+  }
+  return veloPaymentStmts.findByOperationId.get(checkout.operationId);
+});
+
+const recordVeloWebhookDelivery = db.transaction((delivery) => {
+  const result = veloPaymentStmts.insertWebhookDelivery.run(delivery);
+  if (!result.changes) return false;
+  if (delivery.status && delivery.paymentIntentId) {
+    veloPaymentStmts.updateStatusByIntent.run({
+      status: delivery.status,
+      updatedAt: delivery.receivedAt,
+      paymentIntentId: delivery.paymentIntentId,
+    });
+  }
+  return true;
+});
 
 function buildUpdate(table, allowedFields, fields, id) {
   const keys = Object.keys(fields).filter((k) => allowedFields.includes(k));
@@ -824,5 +895,27 @@ module.exports = {
       module.exports.users.updateRating(review.revieweeId);
       return review;
     },
+  },
+
+  // ── VELO CHECKOUT ───────────────────────────────────────
+  payments: {
+    findCheckoutByOperationId(operationId) {
+      return veloPaymentStmts.findByOperationId.get(operationId) || undefined;
+    },
+
+    findCheckoutByIntentId(paymentIntentId) {
+      return veloPaymentStmts.findByIntentId.get(paymentIntentId) || undefined;
+    },
+
+    createCheckout(checkout) {
+      return createVeloCheckout(checkout);
+    },
+
+    updateCheckoutStatus(paymentIntentId, status, updatedAt) {
+      veloPaymentStmts.updateStatusByIntent.run({ status, updatedAt, paymentIntentId });
+      return this.findCheckoutByIntentId(paymentIntentId);
+    },
+
+    recordWebhookDelivery: recordVeloWebhookDelivery,
   },
 };

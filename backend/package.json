@@ -3,11 +3,16 @@
   "version": "1.0.0",
   "description": "TaskHero REST API backend",
   "main": "server.js",
+  "engines": {
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
+  },
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "@carts1024/velo-sdk": "^1.0.0",
+    "@stellar/stellar-sdk": "^17.4.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
