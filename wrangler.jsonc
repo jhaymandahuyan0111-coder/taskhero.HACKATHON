@@ -1,0 +1,25 @@
+﻿{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "taskhero-kirbz",
+  "main": "cloudflare/worker.js",
+  "account_id": "de87e5f44b5accc0500858260a7336bb",
+  "compatibility_date": "2026-11-07",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "ai": {"binding": "AI"},
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "alias": {
+    "iconv-lite": "./cloudflare/encoding.cjs",
+    "better-sqlite3": "./cloudflare/sqlite.cjs"
+  },
+  "durable_objects": {
+    "bindings": [{"name": "TASKHERO_DB", "class_name": "TaskHeroDatabase"}]
+  },
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["TaskHeroDatabase"]}],
+  "vars": {"NODE_ENV": "production", "DATABASE_PATH": "durable-object-sqlite"}
+}

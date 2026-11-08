@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-const suggestions = ["How do I post a task?", "How do I message a helper?", "How do I find a task?"];
+const suggestions = ["Explain a topic in simple terms", "Help me brainstorm an idea", "How do I post a task?"];
 const MAX_HISTORY_MESSAGES = 4;
-const API_BASE = window.TASKHERO_API_BASE || "/api";
+const API_BASE = import.meta.env.VITE_API_BASE || window.TASKHERO_API_BASE || "/api";
 
 export default function AiChatBot({ isHidden = false }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -53,7 +53,10 @@ export default function AiChatBot({ isHidden = false }) {
     try {
       const response = await fetch(`${API_BASE}/ai/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("taskhero-token") || ""}`,
+        },
         body: JSON.stringify({ message: text, history }),
       });
       if (!response.ok) {
@@ -98,7 +101,7 @@ export default function AiChatBot({ isHidden = false }) {
       if (!streamEnded) throw new Error("The connection ended before Anny finished. Please try again.");
     } catch (error) {
       const text = error instanceof TypeError
-        ? "I couldn’t reach Anny. Check that the backend and local Ollama are running, then try again."
+        ? "I couldn’t reach Anny. Check that the backend and its AI provider are running, then try again."
         : error.message || "Anny could not finish the response. Please try again.";
       setMessages((currentMessages) => currentMessages.map((message) => message.id === assistantMessageId
         ? { ...message, text: message.text ? `${message.text}\n\n${text}` : text, pending: false, isError: true }
@@ -121,7 +124,7 @@ export default function AiChatBot({ isHidden = false }) {
             <span className="help-chat-avatar" aria-hidden="true">A</span>
             <div className="help-chat-heading">
               <h2 id="help-chat-title">Anny</h2>
-              <p>Your TaskHero personal assistant</p>
+              <p>Ask me anything, about TaskHero or beyond</p>
             </div>
             <button className="help-chat-close" type="button" onClick={() => setIsOpen(false)} aria-label="Close Anny" title="Close Anny">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>
@@ -142,8 +145,8 @@ export default function AiChatBot({ isHidden = false }) {
             </div>
           )}
           <form className="help-chat-form" onSubmit={sendMessage}>
-            <label className="sr-only" htmlFor="help-chat-input">Ask Anny about TaskHero</label>
-            <input id="help-chat-input" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask Anny..." autoComplete="off" maxLength={2000} disabled={isLoading} />
+            <label className="sr-only" htmlFor="help-chat-input">Ask Anny anything</label>
+            <input id="help-chat-input" value={question} onChange={(event) => setQuestion(event.target.value)} placeholder="Ask Anny anything..." autoComplete="off" maxLength={2000} disabled={isLoading} />
             <button type="submit" disabled={!question.trim() || isLoading} aria-label="Send message" title="Send message">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
             </button>

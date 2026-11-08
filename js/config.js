@@ -1,12 +1,11 @@
 /* Shared API configuration for local development and GitHub Pages. */
-window.TASKHERO_API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-  ? "http://localhost:3000/api"
-  : "https://task-hero-bu79.onrender.com/api";
+window.TASKHERO_API_BASE = window.TASKHERO_API_BASE || "/api";
 
 const nativeFetch = window.fetch.bind(window);
 window.fetch = (input, options = {}) => {
-  const requestUrl = typeof input === "string" ? input : input.url;
-  if (!requestUrl.startsWith(window.TASKHERO_API_BASE)) return nativeFetch(input, options);
+  const requestUrl = new URL(typeof input === "string" ? input : input.url, window.location.href).href;
+  const apiUrl = new URL(window.TASKHERO_API_BASE, window.location.href).href;
+  if (!requestUrl.startsWith(apiUrl + "/")) return nativeFetch(input, options);
 
   const headers = new Headers(input instanceof Request ? input.headers : undefined);
   new Headers(options.headers || {}).forEach((value, name) => headers.set(name, value));

@@ -80,9 +80,11 @@ npm run dev
 | GET | `/api/reviews/:userId` | List reviews for a user |
 
 ### AI assistant
+Anny can answer general questions as well as TaskHero questions. Anny uses Cloudflare Workers AI from the backend. Configure CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN. Chat requires a TaskHero session. The model is fixed to Llama 3.3 70B FP8 Fast and replies are limited to 384 output tokens.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/ai/chat` | Stream an Anny help-chat response as NDJSON |
+| POST | `/api/ai/chat` | Stream an Anny general-assistant response as NDJSON |
 
 ### Payments
 | Method | Endpoint | Description |
@@ -140,3 +142,20 @@ Authorization: Bearer <session-token>
 - Passwords are hashed with `bcryptjs`; protected routes use signed bearer sessions.
 - Set `TASKHERO_SESSION_SECRET` in production. The development fallback secret must not be used in production.
 - See the repository-root README for the Velo checkout and Testnet submission flow.
+
+## Cloudflare Workers AI setup
+
+1. Create or sign in to a Cloudflare account and keep the Workers Free plan.
+2. In the Cloudflare dashboard, open Workers AI and select Use REST API.
+3. Copy the Account ID and create a Workers AI API Token using its template.
+4. Save CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN in backend/.env.
+   Keep the API token server-side and out of chat, source control and screenshots.
+5. Restart the backend with npm start. Run npm run dev at the project root.
+   Sign in to TaskHero and ask Anny a question.
+
+The API request goes from Express to Cloudflare's official REST endpoint.
+Free plan usage stops at its daily allowance. Stay on Free to avoid usage charges.
+This integrates hosted AI. Public hosting for Express and its SQLite database
+still needs separate setup. Live verification requires your Cloudflare credentials.
+
+Official guide: https://developers.cloudflare.com/workers-ai/get-started/rest-api/

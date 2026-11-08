@@ -2,9 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { getNetworkDetails, requestAccess, signTransaction } from "@stellar/freighter-api";
 import AiChatBot from "./Ai chat bot/AiChatBot.jsx";
 
-const API_BASE = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-  ? "http://localhost:3000/api"
-  : "https://task-hero-bu79.onrender.com/api";
+const API_BASE = import.meta.env.VITE_API_BASE || "/api";
 
 function currentUser() {
   if (!localStorage.getItem("taskhero-token")) {
@@ -22,6 +20,108 @@ function currentUser() {
 
 function go(path) {
   window.location.href = path;
+}
+
+function UserSearch() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState([]);
+  const [status, setStatus] = useState("");
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    setResults([]);
+    if (!query.trim()) { setStatus(""); return () => controller.abort(); }
+    setStatus("Searching…");
+    const timer = setTimeout(async () => {
+      try {
+        const response = await fetch(`${API_BASE}/users/search?q=${encodeURIComponent(query.trim())}`, {signal: controller.signal});
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error();
+        setResults(result.data);
+        setStatus(result.data.length ? "" : "No users found.");
+      } catch {
+        if (!controller.signal.aborted) setStatus("Unable to search. Please try again.");
+      }
+    }, 250);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query]);
+  return <div className="nav-user-search" onBlur={(event) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
+  }} onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
+    <div className="nav-search-wrap">
+      <input className="nav-search-input" type="search" aria-label="Search users by name" placeholder="Search users…" value={query}
+        onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onFocus={() => setOpen(true)} />
+    </div>
+    {open && query.trim() && <div className="nav-search-dropdown open">
+      {status && <div className="nav-search-empty" role="status">{status}</div>}
+      {results.map((user) => <a className="nav-search-result" key={user.id} href={`profile.html?userId=${encodeURIComponent(user.id)}`}>
+        <span className="nav-search-info"><span className="nav-search-name">{user.name}</span><span className="nav-search-sub">{user.tagline || user.location || "TaskHero member"}</span></span>
+      </a>)}
+    </div>}
+  </div>;
+}
+
+function NotificationBell() {
+  const user = currentUser();
+  const [count, setCount] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState("");
+  const wrapper = useRef(null);
+  const version = useRef(0);
+  async function refresh(full = open) {
+    if (!user || document.hidden) return;
+    const requestVersion = ++version.current;
+    try {
+      const response = await fetch(`${API_BASE}/notifications/${encodeURIComponent(user.id)}${full ? "" : "/unread-count"}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem("taskhero-token")}` },
+      });
+      const result = await response.json();
+      if (!response.ok || !result.success) throw new Error("Unable to load notifications.");
+      if (version.current !== requestVersion) return;
+      setCount(result.unreadCount);
+      if (full) setItems(result.data);
+      setError("");
+    } catch (failure) { if (full && version.current === requestVersion) setError(failure.message); }
+  }
+  useEffect(() => {
+    refresh();
+    const update = () => refresh();
+    const interval = setInterval(update, 15000);
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", update);
+    return () => { version.current++; clearInterval(interval); window.removeEventListener("focus", update); document.removeEventListener("visibilitychange", update); };
+  }, [user?.id, open]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (event) => { if (!wrapper.current?.contains(event.target)) setOpen(false); };
+    const escape = (event) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", close); document.addEventListener("keydown", escape);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
+  }, [open]);
+  async function markRead(id) {
+    version.current++;
+    try {
+      const response = await fetch(`${API_BASE}/notifications/${encodeURIComponent(id || user.id)}/${id ? "read" : "read-all"}`, {
+        method: "PATCH", headers: { Authorization: `Bearer ${localStorage.getItem("taskhero-token")}` },
+      });
+      if (!response.ok) throw new Error("Unable to mark notifications as read.");
+      await refresh(true);
+    } catch (failure) { setError(failure.message); }
+  }
+  if (!user) return null;
+  return <div ref={wrapper}>
+    <button className="notification-button" type="button" aria-label={count ? `Notifications, ${count} unread` : "Notifications"} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M10 21h4" /></svg>
+      <span className="notification-dot" hidden={!count} aria-hidden="true" />
+    </button>
+    {open && <section className="notifications-panel" aria-label="Notifications">
+      <header><strong>Notifications</strong><button type="button" onClick={() => markRead()}>Mark all read</button></header>
+      {error && <p role="alert">{error}</p>}
+      {!error && !items.length && <p>No notifications yet.</p>}
+      {items.map((item) => <button className="notification-item" type="button" key={item.id} disabled={item.read} onClick={() => markRead(item.id)}><span>{item.text}</span><time dateTime={item.createdAt}>{new Date(item.createdAt).toLocaleString()}</time></button>)}
+    </section>}
+  </div>;
 }
 
 function Navigation() {
@@ -46,7 +146,9 @@ function Navigation() {
           <a className="nav-link" href="messeges-page.html">Messages</a>
           <button className="nav-link" type="button" onClick={() => document.getElementById("agent-payments")?.scrollIntoView({ behavior: "smooth" })}>Agent wallet</button>
         </div>
+        <UserSearch />
         <div className="nav-actions">
+          <NotificationBell />
           <a className="primary-button post-task-button" href="post-task.html">Post a task</a>
           <button className="theme-toggle-button" type="button" onClick={toggleTheme} aria-label={`Switch to ${isDark ? "light" : "dark"} mode`} title={`Switch to ${isDark ? "light" : "dark"} mode`}>
             {isDark ? (
@@ -634,7 +736,7 @@ function Home() {
         <div className="stats-row">
           <div className="stat-item"><div className="stat-number">{stats.openTasks ?? "0"}</div><div className="stat-label">Open tasks</div></div>
           <div className="stat-item"><div className="stat-number">{stats.completedTasks ?? "0"}</div><div className="stat-label">Completed</div></div>
-          <div className="stat-item"><div className="stat-number">{stats.activeUsers ?? "0"}</div><div className="stat-label">Active members</div></div>
+          <div className="stat-item"><div className="stat-number">{stats.activeUsers ?? "0"}</div><div className="stat-label">Members</div></div>
           <div className="stat-item"><div className="stat-number">{stats.totalPaid == null ? "₱0" : `₱${Number(stats.totalPaid).toLocaleString()}`}</div><div className="stat-label">Paid to helpers</div></div>
         </div>
         <div className="filter-bar" role="group" aria-label="Filter tasks by category">

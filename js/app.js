@@ -127,6 +127,39 @@ function showToast(message, type = "info", duration = 3000) {
    NOTIFICATIONS PANEL
    ========================================================= */
 
+let notificationBadgeVersion = 0;
+let notificationBadgeTimer;
+function setNotificationBadge(count) {
+    notificationBadgeVersion++;
+    const button = document.getElementById("notif-btn");
+    if (!button) return;
+    const dot = button.querySelector(".notification-dot");
+    if (dot) dot.hidden = !(count > 0);
+    button.setAttribute("aria-label", count > 0 ? `Notifications, ${count} unread` : "Notifications");
+    button.title = count > 0 ? "New notifications" : "Notifications";
+}
+
+async function refreshNotificationBadge() {
+    if (!document.getElementById("notif-btn")) return;
+    const user = currentUser();
+    if (!user) { setNotificationBadge(0); return; }
+    if (document.hidden) return;
+    const version = ++notificationBadgeVersion;
+    try {
+        const response = await fetch(`${window.TASKHERO_API_BASE}/notifications/${encodeURIComponent(user.id)}/unread-count`);
+        const result = await response.json();
+        if (response.ok && result.success && version === notificationBadgeVersion) setNotificationBadge(result.unreadCount);
+    } catch (_) { /* Preserve the last known state during a network interruption. */ }
+}
+
+function startNotificationBadge() {
+    clearInterval(notificationBadgeTimer);
+    refreshNotificationBadge();
+    notificationBadgeTimer = setInterval(refreshNotificationBadge, 15000);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) refreshNotificationBadge(); });
+window.addEventListener("focus", refreshNotificationBadge);
+
 async function notifications() {
     const existing = document.getElementById("notif-panel");
     if (existing) { existing.remove(); return; }
@@ -186,6 +219,7 @@ async function notifications() {
             const response = await fetch(`${window.TASKHERO_API_BASE}/notifications/${encodeURIComponent(user.id)}`);
             const result = await response.json();
             if (!response.ok || !result.success) throw new Error(result.message || "Unable to load notifications.");
+            setNotificationBadge(result.unreadCount);
             list.replaceChildren();
             if (!result.data.length) {
                 const empty = document.createElement("p");
@@ -283,6 +317,7 @@ function loadNavigation() {
             setActiveNav();       // highlight correct button
             initUserSearch();     // wire up user search
             updateNavAvatar();    // show user's profile initial/photo
+            startNotificationBadge();
         })
         .catch(err => console.warn("Navigation load failed:", err));
 }

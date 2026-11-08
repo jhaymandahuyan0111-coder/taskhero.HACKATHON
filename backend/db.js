@@ -9,7 +9,7 @@ const bcrypt   = require('bcryptjs');
 const crypto   = require('crypto');
 
 // ── Open / create the database file ──────────────────────
-const db = new Database(path.join(__dirname, 'taskhero.db'));
+const db = new Database(process.env.DATABASE_PATH || path.join(__dirname, 'taskhero.db'));
 
 // Performance & integrity pragmas
 db.pragma('journal_mode = WAL');
@@ -86,6 +86,13 @@ db.exec(`
     PRIMARY KEY (messageId, userId)
   );
 
+  CREATE TABLE IF NOT EXISTS message_reactions (
+    messageId TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    userId TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    emoji TEXT NOT NULL,
+    PRIMARY KEY (messageId, userId)
+  );
+
   CREATE TABLE IF NOT EXISTS notifications (
     id        TEXT PRIMARY KEY,
     userId    TEXT NOT NULL REFERENCES users(id),
@@ -126,6 +133,7 @@ db.exec(`
     receivedAt     TEXT NOT NULL
   );
 
+
   CREATE INDEX IF NOT EXISTS idx_tasks_postedBy    ON tasks(postedBy);
   CREATE INDEX IF NOT EXISTS idx_tasks_status      ON tasks(status);
   CREATE INDEX IF NOT EXISTS idx_messages_convId   ON messages(conversationId);
@@ -136,6 +144,24 @@ db.exec(`
 if (!db.pragma('table_info(users)').some((column) => column.name === 'banner')) {
   db.exec("ALTER TABLE users ADD COLUMN banner TEXT DEFAULT ''");
 }
+
+if (!db.pragma('table_info(users)').some((column) => column.name === 'isTestAccount')) {
+  db.exec('ALTER TABLE users ADD COLUMN isTestAccount INTEGER NOT NULL DEFAULT 0');
+}
+// Preserve these exact deployment-check accounts, excluding them from the
+// public member directory and total. Match both IDs and test email patterns.
+const deploymentTestAccounts = [
+  'user-7598163e-4000-4bab-8366-984981f7eb22',
+  'user-872b203d-824b-493a-b269-13035d91bcac',
+  'user-d0a0dcf5-0352-49fc-95a5-7361ab922953',
+  'user-08b4da7a-b72d-4c8d-9e84-895c6684a51c',
+  'user-e3fa5bde-5010-4828-a591-5bcd3a1b2d3a',
+];
+db.prepare(`UPDATE users SET isTestAccount = 1
+  WHERE id IN (${deploymentTestAccounts.map(() => '?').join(',')})
+  AND ((name = 'Deployment Check' AND email GLOB 'deployment-[0-9]*@example.com')
+    OR (name IN ('Mobile Check Sender', 'Mobile Check Recipient') AND email GLOB 'mobile-[0-9]*@example.com'))
+`).run(...deploymentTestAccounts);
 
 // Remove orphaned task records before they can reach the feed. Valid tasks
 // remain untouched; accepted tasks with a missing acceptor are reopened.
@@ -186,7 +212,7 @@ function parseUser(row) {
 // USERS
 const stmts = {
   users: {
-    findAll:     db.prepare('SELECT * FROM users'),
+    findAll:     db.prepare('SELECT * FROM users WHERE isTestAccount = 0'),
     findById:    db.prepare('SELECT * FROM users WHERE id = ?'),
     findByEmail: db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE'),
     insert: db.prepare(`
@@ -236,7 +262,7 @@ const stmts = {
     findAll: db.prepare('SELECT * FROM tasks ORDER BY createdAt DESC'),
     findById: db.prepare('SELECT * FROM tasks WHERE id = ?'),
     countByStatus: db.prepare('SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status'),
-    countUsers: db.prepare('SELECT COUNT(*) as c FROM users'),
+    countUsers: db.prepare('SELECT COUNT(*) as c FROM users WHERE isTestAccount = 0'),
     sumCompleted: db.prepare(`SELECT SUM(budget) as total FROM tasks WHERE status = 'completed'`),
     insert: db.prepare(`
       INSERT INTO tasks
@@ -857,10 +883,31 @@ module.exports = {
     hideForUser(messageId, userId) {
       stmts.messages.hideForUser.run(messageId, userId, new Date().toISOString());
     },
+
+    reactionsForConversation(conversationId) {
+      return db.prepare(`SELECT r.messageId, r.userId, r.emoji FROM message_reactions r
+        JOIN messages m ON m.id = r.messageId WHERE m.conversationId = ?`).all(conversationId);
+    },
+
+    setReaction(messageId, userId, emoji) {
+      if (emoji === null) {
+        db.prepare('DELETE FROM message_reactions WHERE messageId = ? AND userId = ?').run(messageId, userId);
+      } else {
+        db.prepare(`INSERT INTO message_reactions (messageId, userId, emoji) VALUES (?, ?, ?)
+          ON CONFLICT(messageId, userId) DO UPDATE SET emoji = excluded.emoji`).run(messageId, userId, emoji);
+      }
+    },
   },
 
   // ── NOTIFICATIONS ────────────────────────────────────────
   notifications: {
+    findById(id) {
+      return stmts.notifications.findById.get(id);
+    },
+
+    unreadCount(userId) {
+      return db.prepare('SELECT COUNT(*) AS count FROM notifications WHERE userId = ? AND read = 0').get(userId).count;
+    },
     findByUser(userId) {
       return stmts.notifications.findByUser.all(userId);
     },

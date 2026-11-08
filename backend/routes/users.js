@@ -19,13 +19,13 @@ function isLocalOrigin(origin) {
    ───────────────────────────────────────────────────────── */
 function safeUser(user) {
   if (!user) return null;
-  const { password, ...rest } = user;
+  const { password, isTestAccount, ...rest } = user;
   return rest;
 }
 
 function publicUser(user) {
   if (!user) return null;
-  const { password, email, contact, ...rest } = user;
+  const { password, email, contact, isTestAccount, ...rest } = user;
   return rest;
 }
 

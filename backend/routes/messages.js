@@ -95,6 +95,7 @@ router.get("/conversations/:userId/:conversationId", (req, res) => {
     .filter((message) => !hidden.has(message.id));
 
   // Attach sender info to each message
+  const reactions = db.messages.reactionsForConversation(conversationId);
   const withSender = convMessages.map((m) => {
     const sender = db.users.findById(m.senderId);
     return {
@@ -103,6 +104,13 @@ router.get("/conversations/:userId/:conversationId", (req, res) => {
       senderName:   sender ? sender.name : "Unknown",
       senderAvatar: sender ? sender.avatar : "?",
       isMe:         m.senderId === userId,
+      reactions: reactions.filter((r) => r.messageId === m.id).reduce((groups, r) => {
+        let group = groups.find((item) => item.emoji === r.emoji);
+        if (!group) { group = { emoji: r.emoji, count: 0, reactedByMe: false }; groups.push(group); }
+        group.count++;
+        if (r.userId === userId) group.reactedByMe = true;
+        return groups;
+      }, []),
     };
   });
 
@@ -264,6 +272,25 @@ router.post("/conversations", (req, res) => {
   const created = db.conversations.create(conv);
 
   res.status(201).json({ success: true, data: created });
+});
+
+// Each participant may set one reaction per message; null removes their reaction.
+router.put("/:messageId/reaction", (req, res) => {
+  const emoji = req.body?.emoji;
+  if (emoji !== null && !["👍", "❤️", "😂", "😮", "😢", "🙏"].includes(emoji)) {
+    return res.status(400).json({ success: false, message: "Choose a supported reaction." });
+  }
+  const message = db.messages.findById(req.params.messageId);
+  if (!message) return res.status(404).json({ success: false, message: "Message not found." });
+  const conversation = db.conversations.findById(message.conversationId);
+  if (!conversation || ![conversation.participant1, conversation.participant2].includes(req.user.id)) {
+    return res.status(403).json({ success: false, message: "You cannot react to this message." });
+  }
+  if (db.messages.hiddenByUser(req.user.id).has(message.id)) {
+    return res.status(404).json({ success: false, message: "Message not found." });
+  }
+  db.messages.setReaction(message.id, req.user.id, emoji);
+  res.json({ success: true });
 });
 
 module.exports = router;

@@ -268,6 +268,35 @@
     font-size: 14px; padding: 4px; opacity: 0; transition: opacity .15s;
 }
 .message-row:hover .message-delete { opacity: 1; }
+.message-stack { max-width: min(88%, 520px); min-width: 0; }
+.message-stack .message { max-width: 100%; white-space: pre-wrap; user-select: text; }
+.message-reactions, .reaction-picker { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.message-reactions button, .reaction-picker button, .paste-btn {
+    min-height: 44px; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--card); color: var(--text); cursor: pointer;
+    font: inherit; font-size: 12px;
+}
+.reaction-picker button { min-width: 44px; font-size: 20px; }
+.message-reactions button[aria-pressed="true"] { border-color: var(--primary); background: var(--surface); }
+.message-stack { position: relative; }
+.message-more { position: absolute; top: 4px; right: -34px; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--card); color: var(--text-sub); font-size: 22px; cursor: pointer; opacity: 0; }
+.message-row.sent .message-more { right: auto; left: -34px; }
+.message-more:focus-visible, .message-row:hover .message-more { opacity: 1; }
+.message-context-menu { position: fixed; z-index: 2500; width: min(288px, calc(100vw - 24px)); padding: 8px; border: 1px solid var(--border); border-radius: 18px; background: var(--card); color: var(--text); box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+.message-context-menu[hidden] { display: none; }
+.message-context-menu .reaction-picker { flex-wrap: nowrap; margin: 0 0 6px; gap: 0; }
+.message-context-menu .reaction-picker button { flex: 1; min-width: 0; min-height: 44px; padding: 4px; border: 0; border-radius: 50%; background: transparent; }
+.message-menu-action { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text); text-align: left; font: inherit; cursor: pointer; }
+.message-menu-action:hover, .message-menu-action:focus-visible, .reaction-picker button:hover { background: var(--surface); }
+.message-menu-delete { color: var(--danger); }
+@media (hover: none) {
+    .message-more { display: none; }
+    .message-stack .message { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
+}
+.msg-input { resize: none; max-height: 100px; }
+.msg-form { flex-wrap: wrap; }
+.msg-input { flex-basis: 60%; }
+.paste-btn { padding: 6px; }
 .msg-time { display: block; font-size: 10px; margin-top: 4px; opacity: 0.55; }
 
 /* Typing */
@@ -348,10 +377,22 @@ body.dark-mode .chat-action-btn { border-color: var(--border); color: var(--text
 body.dark-mode .chat-action-btn:hover { border-color: var(--primary); color: var(--primary); }
 body.dark-mode .avatar .online-dot { border-color: var(--card); }
 
-@media (max-width: 800px) {
-    .messages-layout { grid-template-columns: 1fr; height: calc(100vh - 120px); }
-    .convo-panel { display: none; }
-    .convo-panel.mobile-show { display: flex; position: fixed; inset: 0; z-index: 500; }
+.chat-back { display: none; }
+.chat-panel, #chatView, .convo-panel { min-width: 0; min-height: 0; }
+.msg-input { min-width: 0; }
+@media (max-width: 860px) {
+    .messages-layout { grid-template-columns: minmax(0, 1fr); height: calc(100dvh - 112px - env(safe-area-inset-bottom)); }
+    .convo-panel { display: flex; border-right: 0; }
+    .chat-panel { display: none; }
+    .messages-layout.is-chat-open .convo-panel { display: none; }
+    .messages-layout.is-chat-open .chat-panel { display: flex; }
+    .chat-back { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: var(--text); }
+    .chat-header { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+    .chat-header-actions { width: 100%; justify-content: flex-end; }
+    .msg-input-area { padding: 8px 12px; }
+    .msg-input, .user-search input, .convo-search input { font-size: 16px; min-height: 44px; }
+    .user-result { min-height: 44px; }
+    .user-results { flex-shrink: 0; }
 }
     </style>
 </head>
@@ -380,6 +421,7 @@ body.dark-mode .avatar .online-dot { border-color: var(--card); }
             </div>
             <div id="chatView" style="display:none;flex-direction:column;height:100%">
                 <div class="chat-header">
+                    <button class="chat-back" type="button" onclick="showConversationList()" aria-label="Back to conversations">&#8592; Back</button>
                     <div class="avatar" id="chatAvatar" style="cursor:default">A</div>
                     <div class="chat-user-info">
                         <h2 id="chatName">Conversation</h2>
@@ -404,7 +446,8 @@ body.dark-mode .avatar .online-dot { border-color: var(--card); }
                 </div>
                 <div class="msg-input-area">
                     <form class="msg-form" onsubmit="sendMessage(event)">
-                        <input type="text" class="msg-input" id="msgInput" placeholder="Type a message…" autocomplete="off">
+                        <textarea class="msg-input" id="msgInput" rows="1" aria-label="Message" placeholder="Type a message…" onkeydown="if(event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); this.form.requestSubmit(); }"></textarea>
+                        <button type="button" class="paste-btn" onclick="pasteMessage()" aria-label="Paste text into message">Paste</button>
                         <button type="submit" class="send-btn" id="sendBtn" title="Send" aria-label="Send">Send</button>
                     </form>
                 </div>
@@ -420,6 +463,10 @@ body.dark-mode .avatar .online-dot { border-color: var(--card); }
         const USERS_API    = `${window.TASKHERO_API_BASE}/users`;
         const CONVERSATIONS = [];   // filled by loadConversations()
         let activeConvo     = null; // currently open conversationId
+        let messageCache = new Map();
+        let messageSignature = "";
+        let messageMenuId = null;
+        let reactionBusy = false;
 
         /* ── HELPERS ────────────────────────────────────────── */
         function escHtml(str) {
@@ -581,6 +628,7 @@ body.dark-mode .avatar .online-dot { border-color: var(--card); }
             // Show chat panel
             document.getElementById("chatEmpty").style.display  = "none";
             document.getElementById("chatView").style.display   = "flex";
+            document.querySelector(".messages-layout").classList.add("is-chat-open");
 
             // Fetch messages
             try {
@@ -597,6 +645,11 @@ body.dark-mode .avatar .online-dot { border-color: var(--card); }
         /* ── RENDER MESSAGES ────────────────────────────────── */
         function renderMessages(messages, preserveScroll = false) {
             const container = document.getElementById("chatMessages");
+            const signature = JSON.stringify([activeConvo, messages]);
+            if (preserveScroll && signature === messageSignature) return;
+            messageSignature = signature;
+            messageCache = new Map(messages.map((message) => [message.id, message]));
+            if (messageMenuId && !messageCache.has(messageMenuId)) closeMessageMenu();
             const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
             if (!messages.length) {
                 container.innerHTML = `<div class="date-separator">No messages yet</div>`;
@@ -610,12 +663,155 @@ body.dark-mode .avatar .online-dot { border-color: var(--card); }
                     ? `<div class="date-separator">${msgDate === new Date().toDateString() ? "Today" : new Date(msg.createdAt).toLocaleDateString([], { weekday:"long", month:"short", day:"numeric" })}</div>`
                     : "";
                 lastDate = msgDate;
-                const message = `<div class="message ${msg.isMe ? "sent" : "received"}">${escHtml(msg.text)}<span class="msg-time">${fmtTime(msg.createdAt)}</span></div>`;
-                const deleteButton = `<button class="message-delete" type="button" title="Delete for me" aria-label="Delete message for me" onclick="deleteMessage('${msg.id}')">×</button>`;
-                return sep + `<div class="message-row ${msg.isMe ? "sent" : "received"}">${msg.isMe ? message + deleteButton : deleteButton + message}</div>`;
+                const message = `<div class="message ${msg.isMe ? "sent" : "received"}" tabindex="0" aria-haspopup="dialog" aria-label="Message from ${escHtml(msg.senderName || 'member')}: ${escHtml(msg.text)}. Hold or press Enter for options">${escHtml(msg.text)}<span class="msg-time">${fmtTime(msg.createdAt)}</span></div>`;
+                const reactions = (msg.reactions || []).map((r) => `<button type="button" aria-label="${escHtml(r.emoji)} reaction, ${r.count}" aria-pressed="${r.reactedByMe}" onclick="reactToMessage('${msg.id}', '${escHtml(r.emoji)}')">${escHtml(r.emoji)} ${r.count}</button>`).join("");
+                return sep + `<div class="message-row ${msg.isMe ? "sent" : "received"}" data-message-id="${msg.id}"><div class="message-stack">${message}<div class="message-reactions">${reactions}</div><button class="message-more" type="button" aria-label="Message options" aria-haspopup="dialog" onclick="openMessageMenu('${msg.id}', this)">&#8943;</button></div></div>`;
             }).join("");
             container.innerHTML = html;
             if (!preserveScroll || wasNearBottom) container.scrollTop = container.scrollHeight;
+        }
+
+        let messageMenu;
+        let messageMenuAnchor;
+        let pressTimer;
+        let pressOrigin;
+
+        function closeMessageMenu(restoreFocus = false) {
+            if (messageMenu) messageMenu.hidden = true;
+            messageMenuId = null;
+            if (restoreFocus && messageMenuAnchor?.isConnected) messageMenuAnchor.focus({ preventScroll: true });
+        }
+
+        function openMessageMenu(messageId, anchor) {
+            if (!messageCache.has(messageId)) return;
+            clearTimeout(pressTimer);
+            if (!messageMenu) {
+                messageMenu = document.createElement("div");
+                messageMenu.className = "message-context-menu";
+                messageMenu.setAttribute("role", "dialog");
+                messageMenu.setAttribute("aria-label", "Message options");
+                document.body.append(messageMenu);
+            }
+            messageMenuId = messageId;
+            messageMenuAnchor = anchor.closest(".message-row").querySelector(".message");
+            messageMenu.replaceChildren();
+            const reactions = document.createElement("div");
+            reactions.className = "reaction-picker";
+            reactions.setAttribute("role", "group");
+            reactions.setAttribute("aria-label", "Choose a reaction");
+            for (const emoji of ["\u{1f44d}", "\u2764\ufe0f", "\u{1f602}", "\u{1f62e}", "\u{1f622}", "\u{1f64f}"]) {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.textContent = emoji;
+                button.setAttribute("aria-label", `React ${emoji}`);
+                button.setAttribute("aria-pressed", String((messageCache.get(messageId).reactions || []).some((r) => r.emoji === emoji && r.reactedByMe)));
+                button.onclick = () => { reactToMessage(messageId, emoji); closeMessageMenu(true); };
+                reactions.append(button);
+            }
+            messageMenu.append(reactions);
+            for (const [label, action] of [["Copy", copyMessage], ["Delete for me", deleteMessage]]) {
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "message-menu-action" + (label.startsWith("Delete") ? " message-menu-delete" : "");
+                button.textContent = label;
+                button.onclick = () => { action(messageId); closeMessageMenu(true); };
+                messageMenu.append(button);
+            }
+            messageMenu.hidden = false;
+            positionMessageMenu();
+            if (!matchMedia("(pointer: coarse)").matches) messageMenu.querySelector("button").focus({ preventScroll: true });
+        }
+
+        function positionMessageMenu() {
+            if (!messageMenuId || !messageMenuAnchor?.isConnected) return;
+            const rect = messageMenuAnchor.getBoundingClientRect();
+            const width = messageMenu.offsetWidth, height = messageMenu.offsetHeight;
+            messageMenu.style.left = `${Math.max(12, Math.min(innerWidth - width - 12, rect.left + rect.width / 2 - width / 2))}px`;
+            const preferredTop = rect.top - height - 8 >= 64 ? rect.top - height - 8 : rect.bottom + 8;
+            messageMenu.style.top = `${Math.max(64, Math.min(innerHeight - height - 76, preferredTop))}px`;
+        }
+
+        const messageArea = document.getElementById("chatMessages");
+        function cancelMessageHold() { clearTimeout(pressTimer); pressOrigin = null; }
+        messageArea.addEventListener("pointerdown", (event) => {
+            cancelMessageHold();
+            const bubble = event.target.closest(".message");
+            if (!bubble || event.pointerType === "mouse" || !event.isPrimary) return;
+            const row = bubble.closest("[data-message-id]");
+            if (!row) return;
+            pressOrigin = { x: event.clientX, y: event.clientY, id: event.pointerId };
+            pressTimer = setTimeout(() => { pressOrigin = null; openMessageMenu(row.dataset.messageId, bubble); }, 500);
+        });
+        messageArea.addEventListener("pointermove", (event) => {
+            if (pressOrigin && (event.pointerId !== pressOrigin.id || Math.hypot(event.clientX - pressOrigin.x, event.clientY - pressOrigin.y) > 10)) cancelMessageHold();
+        });
+        document.addEventListener("pointerup", cancelMessageHold);
+        document.addEventListener("pointercancel", cancelMessageHold);
+        messageArea.addEventListener("contextmenu", (event) => {
+            const bubble = event.target.closest(".message");
+            const row = bubble?.closest("[data-message-id]");
+            if (row) { event.preventDefault(); openMessageMenu(row.dataset.messageId, bubble); }
+        });
+        messageArea.addEventListener("keydown", (event) => {
+            if (!event.target.matches(".message")) return;
+            if (event.key === "Enter" || event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+                event.preventDefault(); openMessageMenu(event.target.closest("[data-message-id]").dataset.messageId, event.target);
+            }
+        });
+        document.addEventListener("pointerdown", (event) => {
+            if (messageMenuId && !messageMenu.contains(event.target)) closeMessageMenu();
+        });
+        document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeMessageMenu(true); });
+        messageArea.addEventListener("scroll", () => { cancelMessageHold(); closeMessageMenu(); }, { passive: true });
+        window.addEventListener("resize", positionMessageMenu);
+
+
+        async function reactToMessage(messageId, emoji) {
+            if (reactionBusy) return;
+            const message = messageCache.get(messageId);
+            if (!message) return;
+            reactionBusy = true;
+            const alreadyReacted = (message.reactions || []).some((r) => r.emoji === emoji && r.reactedByMe);
+            try {
+                const response = await fetch(`${MESSAGE_API}/${encodeURIComponent(messageId)}/reaction`, {
+                    method: "PUT", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ emoji: alreadyReacted ? null : emoji }),
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.message || "Unable to save reaction.");
+                closeMessageMenu();
+                await refreshActiveConversation();
+            } catch (error) { showToast(error.message, "error"); }
+            finally { reactionBusy = false; }
+        }
+
+        async function copyMessage(messageId) {
+            const text = messageCache.get(messageId)?.text;
+            if (text === undefined) return;
+            try {
+                await navigator.clipboard.writeText(text);
+                showToast("Message copied.", "success");
+            } catch {
+                const field = document.createElement("textarea");
+                field.value = text; field.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+                document.body.append(field); field.select();
+                let copied = false;
+                try { copied = document.execCommand("copy"); } catch (_) {}
+                field.remove();
+                showToast(copied ? "Message copied." : "Select the message text and use Copy.", copied ? "success" : "info");
+            }
+        }
+
+        async function pasteMessage() {
+            const input = document.getElementById("msgInput");
+            try {
+                const text = await navigator.clipboard.readText();
+                input.setRangeText(text, input.selectionStart, input.selectionEnd, "end");
+                input.focus();
+            } catch {
+                input.focus();
+                showToast("Long-press the message box and choose Paste, or press Ctrl+V.", "info", 5000);
+            }
         }
 
         async function refreshActiveConversation() {
@@ -706,6 +902,11 @@ body.dark-mode .avatar .online-dot { border-color: var(--card); }
         }
 
         /* ── MISC ACTIONS ────────────────────────────────────── */
+        function showConversationList() {
+            document.querySelector(".messages-layout").classList.remove("is-chat-open");
+            document.getElementById("convoSearch").focus();
+        }
+
         function goToMyTasks() { myTasks(); }
 
         function viewTaskDetails() {
@@ -717,6 +918,8 @@ body.dark-mode .avatar .online-dot { border-color: var(--card); }
         document.addEventListener("DOMContentLoaded", async function () {
             await loadUsers();
             await loadConversations();
+            const recipientId = new URLSearchParams(window.location.search).get("recipientId");
+            if (recipientId && currentUser()) await startConversation(recipientId);
             window.setInterval(refreshActiveConversation, 2000);
         });
     </script>

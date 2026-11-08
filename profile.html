@@ -1397,7 +1397,7 @@ async function loadApiUserProfile(userId) {
                 const msgBtn = document.createElement("button");
                 msgBtn.className = "btn-primary";
                 msgBtn.textContent = "Message";
-                msgBtn.onclick = () => requireAuth("messeges-page.html");
+                msgBtn.onclick = () => requireAuth(`messeges-page.html?recipientId=${encodeURIComponent(userId)}`);
                 heroActions.prepend(msgBtn);
 
             loadFollowStatus(userId, followBtn);

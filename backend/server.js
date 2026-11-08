@@ -86,7 +86,13 @@ app.use(express.json());
 
 // Serve the built React frontend first, then the legacy pages during migration.
 app.use(express.static(path.join(__dirname, "..", "dist")));
-app.use(express.static(path.join(__dirname, ".."), { index: false }));
+const publicRoot = path.join(__dirname, "..");
+for (const directory of ["js", "css", "components"]) {
+  app.use("/" + directory, express.static(path.join(publicRoot, directory)));
+}
+app.get(["/auth.html", "/home.html", "/my-task.html", "/post-task.html", "/profile.html", "/messeges-page.html", "/style.css"], (req, res) => {
+  res.sendFile(path.join(publicRoot, req.path));
+});
 
 /* ─────────────────────────────────────────────────────────
    REQUEST LOGGER

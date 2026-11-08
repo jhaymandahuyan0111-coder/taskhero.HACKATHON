@@ -10,6 +10,13 @@ const { requireSession } = require("../auth");
 
 router.use(requireSession);
 
+router.get("/:userId/unread-count", (req, res) => {
+  if (req.params.userId !== req.user.id) {
+    return res.status(403).json({ success: false, message: "You can only view your own notifications." });
+  }
+  res.json({ success: true, unreadCount: db.notifications.unreadCount(req.user.id) });
+});
+
 /* ─────────────────────────────────────────────────────────
    GET /api/notifications/:userId
    Returns all notifications for a user, newest first.

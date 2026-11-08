@@ -122,6 +122,21 @@ body {
 
 .mobile-nav-button { display: none; }
 
+#notif-btn, .notification-button { position: relative; }
+.notification-dot {
+    position: absolute; top: 3px; right: 3px; width: 9px; height: 9px;
+    border-radius: 50%; background: #2389ff; box-shadow: 0 0 0 2px var(--card);
+    pointer-events: none;
+}
+.notification-dot[hidden] { display: none; }
+.notification-button { display: inline-grid; place-items: center; min-width: 40px; min-height: 40px; border: 0; background: transparent; color: var(--text); cursor: pointer; }
+.notifications-panel { position: fixed; top: 78px; right: 12px; width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 150px); overflow: auto; background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow); z-index: 2000; }
+.notifications-panel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; }
+.notifications-panel button { min-height: 44px; cursor: pointer; }
+.notifications-panel .notification-item { display: grid; gap: 6px; width: 100%; padding: 12px; text-align: left; border: 0; border-top: 1px solid var(--border); background: var(--surface); color: var(--text); }
+.notifications-panel .notification-item:disabled { background: var(--card); cursor: default; }
+.notifications-panel time, .notifications-panel p { font-size: 12px; padding: 4px 12px; }
+
 /* ── ICON NAV BUTTONS ────────────────────────────────── */
 
 .nav-icon-btn {
@@ -595,6 +610,7 @@ body.dark-mode .toast.error   { background: #7f1d1d; }
    ========================================================= */
 
 @media (max-width: 860px) {
+    .toast { bottom: calc(76px + env(safe-area-inset-bottom)); left: 12px; right: 12px; white-space: normal; overflow-wrap: anywhere; }
     #shared-navigation {
         position: fixed;
         left: 0; right: 0; bottom: 0;
@@ -824,7 +840,16 @@ body.dark-mode .nav-search-result:hover {
 /* ── RESPONSIVE ───────────────────────────────────────── */
 
 @media (max-width: 860px) {
-    .nav-user-search { display: none; }
+    .nav-user-search { display: block; min-width: 0; }
+    #shared-navigation .nav-user-search {
+        position: fixed; top: 6px; left: 12px; right: 132px;
+        z-index: 1002;
+    }
+    #shared-navigation .nav-actions { justify-content: flex-end; }
+    .nav-search-wrap { height: 44px; }
+    .nav-search-input { width: 100%; min-width: 0; font-size: 16px; }
+    .nav-search-dropdown { min-width: 0; width: min(320px, calc(100vw - 24px)); max-height: 50dvh; overflow-y: auto; }
+    .app-header .nav-user-search { order: 4; width: 100%; margin: 8px 0; }
 }
 
 /* Search match highlight */
@@ -1565,7 +1590,7 @@ body.dark-mode .help-chat-suggestions button { background: var(--card); color: v
 
 @media (max-width: 860px) {
     body:has(.app-header) { padding-top: 0; padding-bottom: 0; }
-    .app-header .navbar { position: relative; inset: auto; height: auto; min-height: 60px; border: 0; box-shadow: none; }
+    .app-header .navbar { position: relative; inset: auto; height: auto; min-height: 60px; flex-wrap: wrap; border: 0; box-shadow: none; }
     .app-header .logo { display: flex; }
     .app-header .nav-links { display: flex; grid-template-columns: none; }
     .app-header .nav-actions { position: static; height: auto; padding: 0; border: 0; background: transparent; }

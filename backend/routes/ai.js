@@ -1,20 +1,22 @@
 const express = require("express");
 
 const router = express.Router();
-const MODEL = "gemma4:e2b";
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://127.0.0.1:11434";
+const { requireSession } = require("../auth");
+const MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_HISTORY_MESSAGES = 4;
 const MAX_HISTORY_MESSAGE_LENGTH = 500;
 const REQUEST_TIMEOUT_MS = 120000;
 
-const SYSTEM_PROMPT = `You are Anny, TaskHero's website help assistant. Give friendly, direct answers, usually 50-120 words. Verified facts: TaskHero's CEO is Junel Mandahuyan. Only mention the CEO's name when the user asks about the CEO or TaskHero leadership; do not include it in introductions or bring it up unprompted. Verified features: Browse tasks searches open task listings by keyword or location and filters by category; users can post tasks with a title, category, budget, location, optional deadline, and description; listings have an Accept task action; navigation includes Browse tasks, My tasks, and Messages; TaskHero has sign-in, registration, and profiles. Never invent features, claim actions are completed, or claim access to private account data. If unsure, say so.`;
+const SYSTEM_PROMPT = `You are Anny, a friendly, capable general-purpose AI assistant. Answer questions across a wide range of topics, including general knowledge, explanations, brainstorming, writing, and technical help; do not limit answers to TaskHero. Match the detail to the question and explain clearly. Be honest about uncertainty and limitations, and do not claim access to live information unless it is provided in the conversation.
+
+For TaskHero-specific questions, use only these verified facts: TaskHero's CEO is Junel Mandahuyan. Only mention the CEO's name when asked about the CEO or TaskHero leadership; do not bring it up unprompted. Browse tasks searches open task listings by keyword or location and filters by category; users can post tasks with a title, category, budget, location, optional deadline, and description; listings have an Accept task action; navigation includes Browse tasks, My tasks, and Messages; TaskHero has sign-in, registration, and profiles. Do not invent other TaskHero features, claim actions are completed, or claim access to private account data. If a TaskHero-specific answer is unknown, say so.`;
 
 function sendEvent(res, event) {
   if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
 }
 
-router.post("/chat", async (req, res) => {
+router.post("/chat", requireSession, async (req, res) => {
   const { message, history = [] } = req.body || {};
 
   if (typeof message !== "string" || !message.trim()) {
@@ -41,86 +43,93 @@ router.post("/chat", async (req, res) => {
   res.on("close", abortOnDisconnect);
 
   try {
-    const ollamaResponse = await fetch(`${OLLAMA_URL}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: MODEL,
-        stream: true,
-        think: false,
-        keep_alive: "5m",
-        options: { num_ctx: 2048, num_predict: 128, temperature: 0.3 },
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          ...recentHistory,
-          { role: "user", content: message.trim() },
-        ],
-      }),
-      signal: controller.signal,
-    });
 
-    if (!ollamaResponse.ok) {
-      const ollamaError = await ollamaResponse.json().catch(() => null);
-      const modelUnavailable = ollamaResponse.status === 404 || /model.*not found/i.test(ollamaError?.error || "");
-      return res.status(503).json({
-        success: false,
-        message: modelUnavailable
-          ? `Anny's AI model (${MODEL}) is not available. Check that it is installed in Ollama.`
-          : "Anny is unavailable right now. Please try again shortly.",
+
+
+    const accountId = process.env.CLOUDFLARE_ACCOUNT_ID?.trim();
+    const apiToken = process.env.CLOUDFLARE_API_TOKEN?.trim();
+    if (!globalThis.__taskheroAI && (!accountId || !apiToken)) {
+      return res.status(503).json({ success: false,
+        message: "Anny needs Cloudflare Workers AI configured on the server." });
+    }
+    if (!globalThis.__taskheroAI && !/^[a-f0-9]{32}$/i.test(accountId)) {
+      return res.status(503).json({ success: false, message: "Anny's Cloudflare account ID needs attention." });
+    }
+    const response = globalThis.__taskheroAI
+      ? new Response(await globalThis.__taskheroAI.run(MODEL, {
+          messages: [{ role: "system", content: SYSTEM_PROMPT }, ...recentHistory,
+            { role: "user", content: message.trim() }],
+          stream: true, max_tokens: 384, temperature: 0.3,
+        }), { headers: { "Content-Type": "text/event-stream" } })
+      : await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${MODEL}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiToken}` },
+        body: JSON.stringify({
+          messages: [{ role: "system", content: SYSTEM_PROMPT }, ...recentHistory,
+            { role: "user", content: message.trim() }],
+          stream: true,
+          max_tokens: 384,
+          temperature: 0.3,
+        }),
+        signal: controller.signal,
       });
+    if (!response.ok) {
+      const message = response.status === 429
+        ? "Anny has reached its AI usage limit. Please try again later."
+        : [401, 403].includes(response.status)
+          ? "Anny's Cloudflare access needs attention on the server."
+          : "Anny's hosted AI is unavailable. Please try again shortly.";
+      return res.status(response.status === 429 ? 429 : 503).json({ success: false, message });
     }
-
-    if (!ollamaResponse.body) {
-      return res.status(502).json({ success: false, message: "Anny could not start a response. Please try again." });
+    if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
+      throw new Error("Cloudflare returned an unexpected response");
     }
-
-    res.status(200);
-    res.set({
+    res.status(200).set({
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
       "X-Accel-Buffering": "no",
     });
     res.flushHeaders();
-
-    const reader = ollamaResponse.body.getReader();
     const decoder = new TextDecoder();
     let pending = "";
+    let dataLines = [];
     let receivedText = false;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      pending += decoder.decode(value, { stream: true });
+    let completed = false;
+    function processLine(line) {
+      if (line.endsWith("\r")) line = line.slice(0, -1);
+      if (line.startsWith("data:")) {
+        dataLines.push(line.slice(5).replace(/^ /, ""));
+        return;
+      }
+      if (line !== "" || !dataLines.length) return;
+      const data = dataLines.join("\n");
+      dataLines = [];
+      if (data === "[DONE]") {
+        completed = true;
+        return;
+      }
+      const event = JSON.parse(data);
+      if (event.error || event.errors?.length) throw new Error("Cloudflare stream failed");
+      if (typeof event.response === "string" && event.response) {
+        receivedText = true;
+        sendEvent(res, { type: "chunk", text: event.response });
+      }
+    }
+    for await (const chunk of response.body) {
+      pending += decoder.decode(chunk, { stream: true });
       const lines = pending.split("\n");
       pending = lines.pop() || "";
-
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const chunk = JSON.parse(line);
-        if (chunk.error) throw new Error("Ollama stream failed");
-        if (chunk.message?.content) {
-          receivedText = true;
-          sendEvent(res, { type: "chunk", text: chunk.message.content });
-        }
-        if (chunk.done) sendEvent(res, { type: "done" });
-      }
+      lines.forEach(processLine);
     }
-
     pending += decoder.decode();
-    if (pending.trim()) {
-      const chunk = JSON.parse(pending);
-      if (chunk.error) throw new Error("Ollama stream failed");
-      if (chunk.message?.content) {
-        receivedText = true;
-        sendEvent(res, { type: "chunk", text: chunk.message.content });
-      }
-      if (chunk.done) sendEvent(res, { type: "done" });
-    }
-
-    if (!receivedText) sendEvent(res, { type: "error", message: "Anny returned an empty response. Please try again." });
+    if (pending) processLine(pending);
+    processLine("");
+    if (!receivedText || !completed) throw new Error("Incomplete Cloudflare AI response");
+    sendEvent(res, { type: "done" });
     res.end();
   } catch (error) {
-    if (res.destroyed || controller.signal.aborted && res.writableEnded) return;
+    if (res.destroyed || res.writableEnded) return;
     if (controller.signal.aborted) {
       const message = "Anny took too long to respond. Please try again.";
       if (res.headersSent) {
@@ -131,7 +140,7 @@ router.post("/chat", async (req, res) => {
       }
       return;
     }
-    const message = "Anny is unavailable. Make sure Ollama is running, then try again.";
+    const message = "Anny could not finish its Cloudflare AI response. Please try again.";
     if (res.headersSent) {
       sendEvent(res, { type: "error", message });
       res.end();
